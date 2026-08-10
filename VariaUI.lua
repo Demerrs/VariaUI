@@ -1879,6 +1879,7 @@ function Window:CreateThemeTab(config: TabConfig?)
 		Title = "Primary Color (Background)",
 		Description = "Changes the overall menu background",
 		Default = Theme.Background,
+        Flag = "Theme_Background", -- Added Flag for saving
 		Callback = function(color: Color3)
 			local h, s, v = color:ToHSV()
 			local elevatedV = math.clamp(v + 0.03, 0, 1)
@@ -1895,6 +1896,7 @@ function Window:CreateThemeTab(config: TabConfig?)
 		Title = "Secondary Color",
 		Description = "Buttons, sliders, selected states",
 		Default = Theme.Secondary,
+        Flag = "Theme_Secondary", -- Added Flag for saving
 		Callback = function(color: Color3)
 			local h, s, v = color:ToHSV()
 			local accentV = math.clamp(v + 0.15, 0, 1)
@@ -1911,6 +1913,7 @@ function Window:CreateThemeTab(config: TabConfig?)
 		Title = "Text Color",
 		Description = "Global color for normal titles and labels",
 		Default = Theme.TextPrimary,
+        Flag = "Theme_Text", -- Added Flag for saving
 		Callback = function(color: Color3)
 			UILibrary:SetTheme({ 
 				TextPrimary = color,
@@ -1924,6 +1927,7 @@ function Window:CreateThemeTab(config: TabConfig?)
 		Title = "Border Color",
 		Description = "Color for inactive tabs and element outlines",
 		Default = Theme.Border,
+        Flag = "Theme_Border", -- Added Flag for saving
 		Callback = function(color: Color3)
 			UILibrary:SetTheme({ Border = color })
 		end,
@@ -1935,6 +1939,7 @@ function Window:CreateThemeTab(config: TabConfig?)
 		Title = "Discord Webhook",
 		Description = "Used to dispatch events externally",
 		Placeholder = "https://discord.com/api/webhooks/...",
+        Flag = "Theme_DiscordWebhook", -- Added Flag for saving
 		Callback = function(url: string)
 			print("Saved Discord Webhook:", url)
 		end,
