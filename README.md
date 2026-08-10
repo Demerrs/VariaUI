@@ -1,3 +1,5 @@
+# **<p align="center">🎨 VariaUI</p>**
+
 # 🌟 VariaUI | API Documentation
 ## 1. Initialization
 To begin using VariaUI, you must first load the library via `loadstring` and then initialize a **Window**.
