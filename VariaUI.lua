@@ -1934,14 +1934,66 @@ function Window:CreateThemeTab(config: TabConfig?)
 	})
 
 	local externalSection = tab:CreateSection("External Integrations")
+	
+	local currentWebhookUrl = ""
+	local currentWebhookMessage = ""
 
 	externalSection:CreateStringInput({
-		Title = "Discord Webhook",
-		Description = "Used to dispatch events externally",
+		Title = "Discord Webhook URL",
+		Description = "The webhook link to send data to",
 		Placeholder = "https://discord.com/api/webhooks/...",
-        Flag = "Theme_DiscordWebhook", -- Added Flag for saving
+		Flag = "Theme_DiscordWebhook",
 		Callback = function(url: string)
-			print("Saved Discord Webhook:", url)
+			currentWebhookUrl = url
+		end,
+	})
+
+	externalSection:CreateStringInput({
+		Title = "Webhook Message",
+		Description = "The custom message the bot will send",
+		Placeholder = "Type your message here...",
+		Flag = "Theme_WebhookMessage",
+		Callback = function(msg: string)
+			currentWebhookMessage = msg
+		end,
+	})
+
+	externalSection:CreateButton({
+		Title = "Send Test Webhook",
+		Description = "Sends your message to the Discord channel",
+		Callback = function()
+			-- Fallback to default message if empty
+			local msgToSend = currentWebhookMessage
+			if msgToSend == "" then
+				msgToSend = "Test message from MawoHUB!"
+			end
+
+			if currentWebhookUrl == "" or not string.match(currentWebhookUrl, "discord%.com/api/webhooks") then
+				return
+			end
+
+			-- Find the executor's HTTP request function
+			local requestFunc = request or http_request or (syn and syn.request)
+			
+			if requestFunc then
+				task.spawn(function()
+					local success, err = pcall(function()
+						requestFunc({
+							Url = currentWebhookUrl,
+							Method = "POST",
+							Headers = {
+								["Content-Type"] = "application/json"
+							},
+							Body = game:GetService("HttpService"):JSONEncode({
+								content = msgToSend,
+								username = "MawoHUB Notifier", -- You can change the bot's name here
+								avatar_url = "https://cdn.discordapp.com/embed/avatars/0.png" -- Optional avatar
+							})
+						})
+					end)
+				end)
+			else
+			end
 		end,
 	})
 
