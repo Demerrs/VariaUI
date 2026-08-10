@@ -30,6 +30,7 @@ export type ToggleConfig = {
 	Description: string?,
 	TextColor: Color3?,
 	Default: boolean?,
+	Flag: string?,
 	Callback: ((value: boolean) -> ())?,
 }
 
@@ -41,6 +42,7 @@ export type SliderConfig = {
 	Max: number,
 	Default: number?,
 	Increment: number?,
+	Flag: string?,
 	Callback: ((value: number) -> ())?,
 }
 
@@ -51,6 +53,7 @@ export type DropdownConfig = {
 	Options: { string },
 	Default: string?,
 	Multi: boolean?,
+	Flag: string?,
 	Callback: ((value: any) -> ())?,
 }
 
@@ -60,6 +63,7 @@ export type MultiDropdownConfig = {
 	TextColor: Color3?,
 	Options: { string },
 	Default: { string }?,
+	Flag: string?,
 	Callback: ((value: { string }) -> ())?,
 }
 
@@ -77,6 +81,7 @@ export type InputConfig = {
 	Max: number?,
 	Default: number?,
 	Placeholder: string?,
+	Flag: string?,
 	Callback: ((value: number) -> ())?,
 }
 
@@ -86,6 +91,7 @@ export type StringInputConfig = {
 	TextColor: Color3?,
 	Default: string?,
 	Placeholder: string?,
+	Flag: string?,
 	Callback: ((value: string) -> ())?,
 }
 
@@ -94,6 +100,7 @@ export type ColorPickerConfig = {
 	Description: string?,
 	TextColor: Color3?,
 	Default: Color3?,
+	Flag: string?,
 	Callback: ((color: Color3) -> ())?,
 }
 
@@ -104,6 +111,7 @@ export type WindowConfig = {
 	MinSize: Vector2?,
 	MaxSize: Vector2?,
 	ToggleKey: Enum.KeyCode?,
+	OnClose: (() -> ())?,
 }
 
 export type TabConfig = {
@@ -253,6 +261,12 @@ end
 local UILibrary = {}
 UILibrary.__index = UILibrary
 
+-- Populated automatically whenever a component is created with a `Flag`,
+-- and kept in sync as the user interacts with it.
+UILibrary.Settings = {} :: { [string]: any }
+-- Internal reference registry mapping flags to component API setters
+local Registry = {} :: { [string]: any }
+
 -- ---------- Component builders ----------
 
 local function BuildRow(parent: Instance, title: string, description: string?, textColor: Color3?): Frame
@@ -355,6 +369,10 @@ local function CreateToggle(parent: Instance, config: ToggleConfig)
 	local row = BuildRow(parent, config.Title, config.Description, config.TextColor)
 	local state = config.Default or false
 
+	if config.Flag then
+		UILibrary.Settings[config.Flag] = state
+	end
+
 	local track = Create("Frame", {
 		Name = "Track",
 		AnchorPoint = Vector2.new(1, 0.5),
@@ -386,6 +404,9 @@ local function CreateToggle(parent: Instance, config: ToggleConfig)
 	local function render()
 		Tween(track, { BackgroundColor3 = state and Theme.Secondary or Theme.Border })
 		Tween(knob, { Position = state and UDim2.new(1, -20, 0.5, 0) or UDim2.new(0, 2, 0.5, 0) })
+		if config.Flag then
+			UILibrary.Settings[config.Flag] = state
+		end
 	end
 	RegisterThemeRefresh(render)
 
@@ -396,6 +417,10 @@ local function CreateToggle(parent: Instance, config: ToggleConfig)
 	end
 	function api.GetValue(_self)
 		return state
+	end
+
+	if config.Flag then
+		Registry[config.Flag] = api
 	end
 
 	clickArea.MouseButton1Click:Connect(function()
@@ -412,6 +437,10 @@ end
 local function CreateSlider(parent: Instance, config: SliderConfig)
 	local increment = config.Increment or 1
 	local value = math.clamp(config.Default or config.Min, config.Min, config.Max)
+
+	if config.Flag then
+		UILibrary.Settings[config.Flag] = value
+	end
 
 	local row = Create("Frame", {
 		Name = "Row",
@@ -512,6 +541,9 @@ local function CreateSlider(parent: Instance, config: SliderConfig)
 		fill.Size = UDim2.new(newRatio, 0, 1, 0)
 		knob.Position = UDim2.new(newRatio, 0, 0.5, 0)
 		valueLabel.Text = tostring(value)
+		if config.Flag then
+			UILibrary.Settings[config.Flag] = value
+		end
 	end
 
 	track.InputBegan:Connect(function(input: InputObject)
@@ -547,6 +579,10 @@ local function CreateSlider(parent: Instance, config: SliderConfig)
 	end
 	function api.GetValue(_self)
 		return value
+	end
+
+	if config.Flag then
+		Registry[config.Flag] = api
 	end
 
 	return api
@@ -658,6 +694,26 @@ local function CreateDropdown(parent: Instance, config: DropdownConfig)
 		end
 	end
 
+	local function syncFlag()
+		if not config.Flag then return end
+		if isMulti then
+			local names = {}
+			for name, isSelected in pairs(selected) do
+				if isSelected then
+					table.insert(names, name)
+				end
+			end
+			UILibrary.Settings[config.Flag] = names
+		else
+			for name, isSelected in pairs(selected) do
+				if isSelected then
+					UILibrary.Settings[config.Flag] = name
+					break
+				end
+			end
+		end
+	end
+
 	local optionButtons: { [string]: TextButton } = {}
 
 	local function refreshHighlight()
@@ -700,6 +756,7 @@ local function CreateDropdown(parent: Instance, config: DropdownConfig)
 			end
 			refreshHighlight()
 			updateDisplayText()
+			syncFlag()
 
 			if config.Callback then
 				if isMulti then
@@ -722,6 +779,7 @@ local function CreateDropdown(parent: Instance, config: DropdownConfig)
 	end)
 
 	updateDisplayText()
+	syncFlag()
 
 	local api = {}
 	function api.SetValue(_self, value: any)
@@ -729,8 +787,10 @@ local function CreateDropdown(parent: Instance, config: DropdownConfig)
 			for name in pairs(selected) do
 				selected[name] = false
 			end
-			for _, name in ipairs(value :: { string }) do
-				selected[name] = true
+			if type(value) == "table" then
+				for _, name in ipairs(value :: { string }) do
+					selected[name] = true
+				end
 			end
 		else
 			for name in pairs(selected) do
@@ -740,6 +800,7 @@ local function CreateDropdown(parent: Instance, config: DropdownConfig)
 		end
 		refreshHighlight()
 		updateDisplayText()
+		syncFlag()
 	end
 	function api.GetValue(_self)
 		if isMulti then
@@ -759,6 +820,10 @@ local function CreateDropdown(parent: Instance, config: DropdownConfig)
 		return nil
 	end
 
+	if config.Flag then
+		Registry[config.Flag] = api
+	end
+
 	return api
 end
 
@@ -776,6 +841,7 @@ local function CreateMultiDropdown(parent: Instance, config: MultiDropdownConfig
 		TextColor = config.TextColor,
 		Options = config.Options,
 		Multi = true,
+		Flag = config.Flag,
 		Callback = config.Callback,
 	} :: DropdownConfig)
 
@@ -843,6 +909,10 @@ local function CreateInput(parent: Instance, config: InputConfig)
 	local row = BuildRow(parent, config.Title, config.Description, config.TextColor)
 	local value = config.Default or 0
 
+	if config.Flag then
+		UILibrary.Settings[config.Flag] = value
+	end
+
 	local box = Create("TextBox", {
 		Name = "Input",
 		AnchorPoint = Vector2.new(1, 0.5),
@@ -882,6 +952,9 @@ local function CreateInput(parent: Instance, config: InputConfig)
 		end
 		value = num
 		box.Text = tostring(value)
+		if config.Flag then
+			UILibrary.Settings[config.Flag] = value
+		end
 		if config.Callback then
 			task.spawn(config.Callback, value)
 		end
@@ -900,12 +973,20 @@ local function CreateInput(parent: Instance, config: InputConfig)
 		return value
 	end
 
+	if config.Flag then
+		Registry[config.Flag] = api
+	end
+
 	return api
 end
 
 local function CreateStringInput(parent: Instance, config: StringInputConfig)
 	local row = BuildRow(parent, config.Title, config.Description, config.TextColor)
 	local value = config.Default or ""
+
+	if config.Flag then
+		UILibrary.Settings[config.Flag] = value
+	end
 
 	local box = Create("TextBox", {
 		Name = "StringInput",
@@ -935,6 +1016,9 @@ local function CreateStringInput(parent: Instance, config: StringInputConfig)
 
 	local function commit()
 		value = box.Text
+		if config.Flag then
+			UILibrary.Settings[config.Flag] = value
+		end
 		if config.Callback then
 			task.spawn(config.Callback, value)
 		end
@@ -953,6 +1037,10 @@ local function CreateStringInput(parent: Instance, config: StringInputConfig)
 		return value
 	end
 
+	if config.Flag then
+		Registry[config.Flag] = api
+	end
+
 	return api
 end
 
@@ -960,6 +1048,10 @@ local function CreateColorPicker(parent: Instance, config: ColorPickerConfig)
 	local row = BuildRow(parent, config.Title, config.Description, config.TextColor)
 	local currentColor = config.Default or Color3.fromRGB(255, 0, 0)
 	local h, s, v = currentColor:ToHSV()
+
+	if config.Flag then
+		UILibrary.Settings[config.Flag] = currentColor
+	end
 
 	local swatch = Create("TextButton", {
 		Name = "Swatch",
@@ -1110,6 +1202,9 @@ local function CreateColorPicker(parent: Instance, config: ColorPickerConfig)
 		svSquare.BackgroundColor3 = Color3.fromHSV(h, 1, 1)
 		svCursor.Position = UDim2.new(s, 0, 1 - v, 0)
 		hueCursor.Position = UDim2.new(0.5, 0, h, 0)
+		if config.Flag then
+			UILibrary.Settings[config.Flag] = currentColor
+		end
 		if config.Callback then
 			task.spawn(config.Callback, currentColor)
 		end
@@ -1190,6 +1285,10 @@ local function CreateColorPicker(parent: Instance, config: ColorPickerConfig)
 	end
 	function api.GetValue(_self)
 		return currentColor
+	end
+
+	if config.Flag then
+		Registry[config.Flag] = api
 	end
 
 	return api
@@ -1594,6 +1693,7 @@ function Window.new(config: WindowConfig)
 	self._bubble = nil :: TextButton?
 	self._minSize = config.MinSize or Vector2.new(380, 280)
 	self._maxSize = config.MaxSize or Vector2.new(1000, 720)
+	self._onClose = config.OnClose :: (() -> ())?
 
 	RegisterThemeRefresh(function()
 		main.BackgroundColor3 = Theme.Background
@@ -1634,6 +1734,9 @@ function Window.new(config: WindowConfig)
 		self:Minimize()
 	end)
 	closeButton.MouseButton1Click:Connect(function()
+		if self._onClose then
+			task.spawn(self._onClose)
+		end
 		self:Destroy()
 	end)
 
@@ -1816,7 +1919,7 @@ function Window:CreateThemeTab(config: TabConfig?)
 			})
 		end,
 	})
-	
+
 	colorSection:CreateColorPicker({
 		Title = "Border Color",
 		Description = "Color for inactive tabs and element outlines",
@@ -1838,6 +1941,10 @@ function Window:CreateThemeTab(config: TabConfig?)
 	})
 
 	return tab
+end
+
+function Window:OnClose(callback: () -> ())
+	self._onClose = callback
 end
 
 function Window:Destroy()
@@ -1871,7 +1978,7 @@ function Window:Minimize()
 	})
 	AddCorner(bubble, UDim.new(1, 0))
 	AddStroke(bubble, Theme.Border, 2)
-	
+
 	local iconImage = Create("ImageLabel", {
 		Name = "Icon",
 		AnchorPoint = Vector2.new(0.5, 0.5),
@@ -1943,6 +2050,23 @@ end
 
 function UILibrary:CreateWindow(config: WindowConfig?)
 	return Window.new(config or {})
+end
+
+function UILibrary:GetSettings(): { [string]: any }
+	return UILibrary.Settings
+end
+
+function UILibrary:LoadSettings(savedData: { [string]: any })
+	if type(savedData) ~= "table" then return end
+	for flag, value in pairs(savedData) do
+		UILibrary.Settings[flag] = value
+		local componentApi = Registry[flag]
+		if componentApi and componentApi.SetValue then
+			pcall(function()
+				componentApi:SetValue(value)
+			end)
+		end
+	end
 end
 
 function UILibrary:SetTheme(overrides: { [string]: any })
