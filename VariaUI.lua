@@ -12,7 +12,7 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
 local LocalPlayer = Players.LocalPlayer
-local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local TargetGui = (gethui and gethui()) or game:GetService("CoreGui") or LocalPlayer:WaitForChild("PlayerGui")
 
 -- ============================================================
 -- Types
@@ -1346,7 +1346,7 @@ function Window.new(config: WindowConfig)
 		Name = "UILibrary",
 		ResetOnSpawn = false,
 		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
-		Parent = PlayerGui,
+		Parent = TargetGui,
 	})
 
 	local main = Create("Frame", {
