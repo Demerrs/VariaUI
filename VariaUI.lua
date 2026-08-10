@@ -2058,22 +2058,37 @@ function UILibrary:CreateWindow(config: WindowConfig?)
 end
 
 function UILibrary:GetSettings(): { [string]: any }
-	return UILibrary.Settings
+	local safeSettings = {}
+	for key, val in pairs(UILibrary.Settings) do
+		-- Convert Color3 to a JSON-safe table
+		if typeof(val) == "Color3" then
+			safeSettings[key] = { type = "Color3", r = val.R, g = val.G, b = val.B }
+		else
+			safeSettings[key] = val
+		end
+	end
+	return safeSettings
 end
 
 function UILibrary:LoadSettings(savedData: { [string]: any })
 	if type(savedData) ~= "table" then return end
 	for flag, value in pairs(savedData) do
-		UILibrary.Settings[flag] = value
+		local parsedValue = value
+		
+		-- Convert the JSON-safe table back into a Roblox Color3 object
+		if type(value) == "table" and value.type == "Color3" then
+			parsedValue = Color3.new(value.r, value.g, value.b)
+		end
+		
+		UILibrary.Settings[flag] = parsedValue
 		local componentApi = Registry[flag]
 		if componentApi and componentApi.SetValue then
 			pcall(function()
-				componentApi:SetValue(value)
+				componentApi:SetValue(parsedValue)
 			end)
 		end
 	end
 end
-
 function UILibrary:SetTheme(overrides: { [string]: any })
 	for key, value in pairs(overrides) do
 		(Theme :: any)[key] = value
