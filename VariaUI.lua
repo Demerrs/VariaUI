@@ -1871,17 +1871,19 @@ function Window:Minimize()
 	})
 	AddCorner(bubble, UDim.new(1, 0))
 	AddStroke(bubble, Theme.Border, 2)
-
-	Create("ImageLabel", {
+	
+	local iconImage = Create("ImageLabel", {
 		Name = "Icon",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.new(0.5, 0, 0.5, 0),
-		Size = UDim2.new(0, 28, 0, 28),
+		Size = UDim2.new(1, 0, 1, 0),
 		BackgroundTransparency = 1,
-		Image = "rbxassetid://88726337843672",
+		Image = "rbxassetid://71056921656243",
 		ZIndex = 501,
 		Parent = bubble,
 	})
+
+	AddCorner(iconImage, UDim.new(1, 0))
 
 	local dragging = false
 	local dragStart: Vector2
