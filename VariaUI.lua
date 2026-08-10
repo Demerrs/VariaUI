@@ -609,6 +609,7 @@ local function CreateDropdown(parent: Instance, config: DropdownConfig)
 		Text = config.Default or "Select...",
 		TextColor3 = Theme.TextPrimary,
 		TextSize = 13,
+		TextTruncate = Enum.TextTruncate.AtEnd,
 		AutoButtonColor = false,
 		ZIndex = 5,
 		Parent = row,
@@ -1012,6 +1013,14 @@ local function CreateStringInput(parent: Instance, config: StringInputConfig)
 		box.BackgroundColor3 = Theme.Background
 		box.TextColor3 = Theme.TextPrimary
 		box.PlaceholderColor3 = Theme.TextMuted
+	end)
+
+	-- INSTANT SAVE FIX: Saves to your config table the moment you paste or type
+	box:GetPropertyChangedSignal("Text"):Connect(function()
+		value = box.Text
+		if config.Flag then
+			UILibrary.Settings[config.Flag] = value
+		end
 	end)
 
 	local function commit()
@@ -1934,18 +1943,12 @@ function Window:CreateThemeTab(config: TabConfig?)
 	})
 
 	local externalSection = tab:CreateSection("External Integrations")
-	
-	local currentWebhookUrl = ""
-	local currentWebhookMessage = ""
 
 	externalSection:CreateStringInput({
 		Title = "Discord Webhook URL",
 		Description = "The webhook link to send data to",
 		Placeholder = "https://discord.com/api/webhooks/...",
 		Flag = "Theme_DiscordWebhook",
-		Callback = function(url: string)
-			currentWebhookUrl = url
-		end,
 	})
 
 	externalSection:CreateStringInput({
@@ -1953,22 +1956,24 @@ function Window:CreateThemeTab(config: TabConfig?)
 		Description = "The custom message the bot will send",
 		Placeholder = "Type your message here...",
 		Flag = "Theme_WebhookMessage",
-		Callback = function(msg: string)
-			currentWebhookMessage = msg
-		end,
 	})
 
 	externalSection:CreateButton({
 		Title = "Send Test Webhook",
 		Description = "Sends your message to the Discord channel",
 		Callback = function()
+			-- Fetch directly from the library's internal settings
+			local currentSettings = UILibrary:GetSettings()
+			local currentWebhookUrl = currentSettings["Theme_DiscordWebhook"]
+			local currentWebhookMessage = currentSettings["Theme_WebhookMessage"]
+
 			-- Fallback to default message if empty
 			local msgToSend = currentWebhookMessage
-			if msgToSend == "" then
+			if not msgToSend or msgToSend == "" then
 				msgToSend = "Test message from MawoHUB!"
 			end
 
-			if currentWebhookUrl == "" or not string.match(currentWebhookUrl, "discord%.com/api/webhooks") then
+			if not currentWebhookUrl or currentWebhookUrl == "" or not string.match(currentWebhookUrl, "discord%.com/api/webhooks") then
 				return
 			end
 
@@ -1977,7 +1982,7 @@ function Window:CreateThemeTab(config: TabConfig?)
 			
 			if requestFunc then
 				task.spawn(function()
-					local success, err = pcall(function()
+					pcall(function()
 						requestFunc({
 							Url = currentWebhookUrl,
 							Method = "POST",
@@ -1986,13 +1991,12 @@ function Window:CreateThemeTab(config: TabConfig?)
 							},
 							Body = game:GetService("HttpService"):JSONEncode({
 								content = msgToSend,
-								username = "MawoHUB Notifier", -- You can change the bot's name here
-								avatar_url = "https://cdn.discordapp.com/embed/avatars/0.png" -- Optional avatar
+								username = "MawoHUB Notifier",
+								avatar_url = "https://cdn.discordapp.com/embed/avatars/0.png"
 							})
 						})
 					end)
 				end)
-			else
 			end
 		end,
 	})
