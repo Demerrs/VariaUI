@@ -2279,7 +2279,13 @@ function UILibrary:LoadSettings(savedData: { [string]: any })
 	end
 
 	for flag, value in pairs(savedData) do
-		if string.find(flag, "Theme_") then
+		if type(value) == "table" and value.type == "Color3" then
+			processFlag(flag, value)
+		end
+	end
+
+	for flag, value in pairs(savedData) do
+		if string.find(flag, "Theme_") and not (type(value) == "table" and value.type == "Color3") then
 			processFlag(flag, value)
 		end
 	end
