@@ -2006,7 +2006,9 @@ function Window:SetBubbleIcon(assetId: string)
 end
 
 function Window:SetToggleKey(key: Enum.KeyCode)
-	self._toggleKey = key
+	task.delay(0.1, function()
+		self._toggleKey = key
+	end)
 end
 
 function Window:CreateTabCategory(name: string, textColor: Color3?)
@@ -2095,6 +2097,60 @@ function Window:CreateThemeTab(config: TabConfig?)
 	return tab
 end
 
+function Window:CreateIntegrationTab(config: TabConfig?)
+	local tab = self:CreateTab(config or { Name = "Integrations" })
+
+	local webhookSection = tab:CreateSection("Discord Webhooks")
+
+	webhookSection:CreateStringInput({
+		Title = "Webhook URL",
+		Description = "Enter your webhook URL to enable notifications.",
+		Placeholder = "https://discord.com/api/webhooks/...",
+		Flag = "Theme_DiscordWebhook"
+	})
+
+	webhookSection:CreateButton({
+		Title = "Test Webhook",
+		Description = "Sends a test message to your Discord server.",
+		Callback = function()
+			local url = UILibrary.Settings["Theme_DiscordWebhook"]
+
+			if not url or url == "" or not string.match(url, "discord%.com/api/webhooks") then
+				UILibrary:Notify({ Title = "Webhook Error", Content = "Please enter a valid Discord Webhook URL.", Duration = 3 })
+				return
+			end
+
+			local requestFunc = request or http_request or (syn and syn.request)
+			if not requestFunc then
+				UILibrary:Notify({ Title = "Error", Content = "Your executor does not support HTTP requests.", Duration = 3 })
+				return
+			end
+
+			task.spawn(function()
+				local success, response = pcall(function()
+					return requestFunc({
+						Url = url,
+						Method = "POST",
+						Headers = { ["Content-Type"] = "application/json" },
+						Body = game:GetService("HttpService"):JSONEncode({
+							username = "VariaUI Notifications",
+							content = "Webhook is Working!"
+						})
+					})
+				end)
+
+				if success then
+					UILibrary:Notify({ Title = "Success", Content = "Test webhook sent successfully!", Duration = 3 })
+				else
+					UILibrary:Notify({ Title = "Failed", Content = "Could not send webhook.", Duration = 3 })
+				end
+			end)
+		end
+	})
+
+	return tab
+end
+
 function Window:OnClose(callback: () -> ()) self._onClose = callback end
 
 function Window:Destroy() 
@@ -2129,7 +2185,7 @@ function Window:Minimize()
 	self._minimized = true; self._main.Visible = false
 	if self._bubble then local b = self._bubble :: TextButton b.Visible = true return end
 
-	local bubble = Create("TextButton", { Name = "Bubble", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(1, -50, 1, -50), Size = UDim2.new(0, 52, 0, 52), BackgroundColor3 = Color3.fromRGB(10, 10, 12), AutoButtonColor = false, Text = "", ZIndex = 500, Parent = self._screenGui })
+	local bubble = Create("TextButton", { Name = "Bubble", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 0), Size = UDim2.new(0, 52, 0, 52), BackgroundColor3 = Color3.fromRGB(10, 10, 12), AutoButtonColor = false, Text = "", ZIndex = 500, Parent = self._screenGui })
 	AddCorner(bubble, UDim.new(1, 0)); AddStroke(bubble, Theme.Border, 2)
 
 	self._bubbleIconImage = Create("ImageLabel", {
@@ -2207,12 +2263,31 @@ end
 
 function UILibrary:LoadSettings(savedData: { [string]: any })
 	if type(savedData) ~= "table" then return end
-	for flag, value in pairs(savedData) do
+
+	local function processFlag(flag, value)
 		local parsedValue = value
-		if type(value) == "table" and value.type == "Color3" then parsedValue = Color3.new(value.r, value.g, value.b) end
+		if type(value) == "table" and value.type == "Color3" then 
+			parsedValue = Color3.new(value.r, value.g, value.b) 
+		end
+
 		UILibrary.Settings[flag] = parsedValue
 		local componentApi = Registry[flag]
-		if componentApi and componentApi.SetValue then pcall(function() componentApi:SetValue(parsedValue) end) end
+
+		if componentApi and componentApi.SetValue then 
+			pcall(function() componentApi:SetValue(parsedValue) end) 
+		end
+	end
+
+	for flag, value in pairs(savedData) do
+		if string.find(flag, "Theme_") then
+			processFlag(flag, value)
+		end
+	end
+
+	for flag, value in pairs(savedData) do
+		if not string.find(flag, "Theme_") then
+			processFlag(flag, value)
+		end
 	end
 end
 
