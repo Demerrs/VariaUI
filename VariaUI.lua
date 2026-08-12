@@ -515,13 +515,15 @@ local function BuildRow(parent: Instance, title: string, description: string?, t
 
 	local titleLabel = Create("TextLabel", {
 		Name = "Title",
-		Size = UDim2.new(1, -baseOffset, description and 0.55 or 1, 0),
+		Position = UDim2.new(0, 0, 0, description and -4 or 0),
+		Size = UDim2.new(1, -baseOffset, description and 0 or 1, description and 16 or 0),
 		BackgroundTransparency = 1,
 		Font = Theme.FontSemibold,
 		Text = title,
 		TextColor3 = textColor or Theme.TextPrimary,
 		TextSize = 14,
 		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = description and Enum.TextYAlignment.Top or Enum.TextYAlignment.Center,
 		TextWrapped = false,
 		TextTruncate = Enum.TextTruncate.AtEnd,
 		Parent = row,
@@ -531,14 +533,15 @@ local function BuildRow(parent: Instance, title: string, description: string?, t
 	if description then
 		descLabel = Create("TextLabel", {
 			Name = "Description",
-			Position = UDim2.new(0, 0, 0.55, 0),
-			Size = UDim2.new(1, -baseOffset, 0.45, 0),
+			Position = UDim2.new(0, 0, 0, 14), 
+			Size = UDim2.new(1, -baseOffset, 0, 14),
 			BackgroundTransparency = 1,
 			Font = Theme.Font,
 			Text = description,
 			TextColor3 = Theme.TextSecondary,
 			TextSize = 12,
 			TextXAlignment = Enum.TextXAlignment.Left,
+			TextYAlignment = Enum.TextYAlignment.Top,
 			TextWrapped = false,
 			TextTruncate = Enum.TextTruncate.AtEnd,
 			Parent = row,
@@ -595,8 +598,8 @@ local function BuildRow(parent: Instance, title: string, description: string?, t
 		UpdateOffset = function(extraWidth: number)
 			inlineOffset += extraWidth + 8
 			local totalOffset = baseOffset + inlineOffset
-			titleLabel.Size = UDim2.new(1, -totalOffset, description and 0.55 or 1, 0)
-			if descLabel then descLabel.Size = UDim2.new(1, -totalOffset, 0.45, 0) end
+			titleLabel.Size = UDim2.new(1, -totalOffset, description and 0 or 1, description and 16 or 0)
+			if descLabel then descLabel.Size = UDim2.new(1, -totalOffset, 0, 14) end
 		end
 	}
 end
@@ -1674,6 +1677,99 @@ function Section.new(parent: Instance, title: string, textColor: Color3?, column
 	return self
 end
 
+function Section:CreateExpandableGroup(title: string, defaultExpanded: boolean?, columns: number?, rowHeight: number?)
+	local container = Create("Frame", {
+		Name = "Expandable_" .. title,
+		Size = UDim2.new(1, 0, 0, 36),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BackgroundColor3 = Theme.Elevated,
+		BackgroundTransparency = Theme.ElevatedTransparency,
+		Parent = self._list,
+		ClipsDescendants = true,
+	})
+	AddCorner(container, Theme.CornerRadiusSmall)
+	local containerStroke = AddStroke(container, Theme.Border, 1)
+
+	local headerBtn = Create("TextButton", {
+		Name = "Header",
+		Size = UDim2.new(1, 0, 0, 36),
+		BackgroundTransparency = 1,
+		Font = Theme.FontSemibold,
+		Text = "",
+		Parent = container,
+	})
+
+	local titleLabel = Create("TextLabel", {
+		Name = "Title",
+		Position = UDim2.new(0, 14, 0, 0),
+		Size = UDim2.new(1, -44, 1, 0),
+		BackgroundTransparency = 1,
+		Font = Theme.FontSemibold,
+		Text = title,
+		TextColor3 = Theme.TextPrimary,
+		TextSize = 13,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = headerBtn,
+	})
+
+	local arrow = Create("TextLabel", {
+		Name = "Arrow",
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -14, 0.5, 0),
+		Size = UDim2.new(0, 20, 0, 20),
+		BackgroundTransparency = 1,
+		Font = Theme.FontBold,
+		Text = defaultExpanded and "-" or "+",
+		TextColor3 = Theme.TextSecondary,
+		TextSize = 16,
+		Parent = headerBtn,
+	})
+
+	local contentLayout = Create("Frame", {
+		Name = "Content",
+		Position = UDim2.new(0, 0, 0, 36),
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BackgroundTransparency = 1,
+		Visible = defaultExpanded or false,
+		Parent = container,
+	})
+	AddPadding(contentLayout, 10)
+
+	local numColumns = math.max(1, math.floor(columns or 1))
+	if numColumns > 1 then
+		Create("UIGridLayout", {
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			CellPadding = UDim2.new(0, 6, 0, 6),
+			CellSize = UDim2.new(1 / numColumns, -6, 0, rowHeight or 42),
+			FillDirection = Enum.FillDirection.Horizontal,
+			HorizontalAlignment = Enum.HorizontalAlignment.Left,
+			Parent = contentLayout,
+		})
+	else
+		Create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 6), Parent = contentLayout })
+	end
+
+	local expanded = defaultExpanded or false
+	TrackConnection(headerBtn.MouseButton1Click:Connect(function()
+		expanded = not expanded
+		contentLayout.Visible = expanded
+		arrow.Text = expanded and "-" or "+"
+	end))
+
+	RegisterThemeRefresh(function()
+		container.BackgroundColor3 = Theme.Elevated
+		containerStroke.Color = Theme.Border
+		titleLabel.TextColor3 = Theme.TextPrimary
+		arrow.TextColor3 = Theme.TextSecondary
+	end)
+
+	local expandableObj = setmetatable({}, Section)
+	expandableObj._container = container
+	expandableObj._list = contentLayout
+	return expandableObj
+end
+
 function Section:CreateButton(config: ButtonConfig) return CreateButton(self._list, config) end
 function Section:CreateToggle(config: ToggleConfig) return CreateToggle(self._list, config) end
 function Section:CreateSlider(config: SliderConfig) return CreateSlider(self._list, config) end
@@ -2057,7 +2153,9 @@ end
 function Window:CreateThemeTab(config: TabConfig?)
 	local tab = self:CreateTab(config or { Name = "Theme Settings" })
 
-	local menuSection = tab:CreateSection("Menu Settings")
+	local mainSection = tab:CreateSection("Configuration")
+
+	local menuSection = mainSection:CreateExpandableGroup("Menu Settings", true)
 	menuSection:CreateKeybind({ 
 		Title = "Menu Toggle Key", 
 		Description = "Key used to hide/show the menu.", 
@@ -2066,13 +2164,13 @@ function Window:CreateThemeTab(config: TabConfig?)
 		ChangedCallback = function(key) self:SetToggleKey(key) end 
 	})
 
-	local bgSection = tab:CreateSection("Background & Gradient")
+	local bgSection = mainSection:CreateExpandableGroup("Background & Gradient", false)
 	bgSection:CreateToggle({ Title = "Use Gradient Background", Description = "Enable a 2-color gradient transition", Default = Theme.UseGradient, Flag = "Theme_UseGradient", Callback = function(state) UILibrary:SetTheme({ UseGradient = state }) end })
 	bgSection:CreateColorPicker({ Title = "Solid Background", Description = "Main background color (when gradient is off)", Default = Theme.Background, Flag = "Theme_Background", Callback = function(color) local h, s, v = color:ToHSV() UILibrary:SetTheme({ Background = color, Elevated = Color3.fromHSV(h, s, math.clamp(v + 0.03, 0, 1)) }) end })
 	bgSection:CreateColorPicker({ Title = "Gradient Color 1", Description = "Top-left transition color", Default = Theme.GradientColor1, Flag = "Theme_GradientColor1", Callback = function(color) UILibrary:SetTheme({ GradientColor1 = color }) end })
 	bgSection:CreateColorPicker({ Title = "Gradient Color 2", Description = "Bottom-right transition color", Default = Theme.GradientColor2, Flag = "Theme_GradientColor2", Callback = function(color) UILibrary:SetTheme({ GradientColor2 = color }) end })
 
-	local colorSection = tab:CreateSection("Accent Colors")
+	local colorSection = mainSection:CreateExpandableGroup("Accent Colors", false)
 	colorSection:CreateColorPicker({ Title = "Secondary Color", Description = "Buttons, sliders, selected states", Default = Theme.Secondary, Flag = "Theme_Secondary", Callback = function(color) local h, s, v = color:ToHSV() UILibrary:SetTheme({ Secondary = color, Accent = Color3.fromHSV(h, s, math.clamp(v + 0.15, 0, 1)) }) end })
 	colorSection:CreateColorPicker({ Title = "Text Color", Description = "Global color for normal titles and labels", Default = Theme.TextPrimary, Flag = "Theme_Text", Callback = function(color) UILibrary:SetTheme({ TextPrimary = color, TextSecondary = color, TextMuted = color }) end })
 	colorSection:CreateColorPicker({ Title = "Border Color", Description = "Color for inactive tabs and element outlines", Default = Theme.Border, Flag = "Theme_Border", Callback = function(color) UILibrary:SetTheme({ Border = color }) end })
@@ -2100,7 +2198,9 @@ end
 function Window:CreateIntegrationTab(config: TabConfig?)
 	local tab = self:CreateTab(config or { Name = "Integrations" })
 
-	local webhookSection = tab:CreateSection("Discord Webhooks")
+	local mainSection = tab:CreateSection("External Services")
+
+	local webhookSection = mainSection:CreateExpandableGroup("Discord Webhooks", true)
 
 	webhookSection:CreateStringInput({
 		Title = "Webhook URL",
