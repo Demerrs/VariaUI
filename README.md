@@ -4,7 +4,7 @@
 
 ## 🌟 Introduction
 
-VariaUI is designed to be sleek, modular, and developer-friendly. Whether you are building a simple UI or complex one, VariaUI provides beautifully animated components, built-in settings management, and full theme customization out of the box.
+VariaUI is designed to be sleek, modular, and developer-friendly. Whether you are building a simple UI or a complex one, VariaUI provides beautifully animated components, built-in settings management, full theme customization, and dynamic multi-column layouts out of the box.
 
 ---
 
@@ -13,6 +13,8 @@ VariaUI is designed to be sleek, modular, and developer-friendly. Whether you ar
 To begin using VariaUI, load the library via GitHub and initialize your main **Window**.
 
 > **💡 Pro Tip:** If you are using a custom theme, apply it using `UILibrary:SetTheme()` *before* creating your window to ensure all components load with your custom colors instantly!
+> 
+> 
 
 ```lua
 local url = "https://raw.githubusercontent.com/Demerrs/VariaUI/refs/heads/main/VariaUI.lua"
@@ -60,7 +62,7 @@ Once your `Window` is created, you can control its behavior and layout using the
 
 ### Built-in Feature Tabs
 
-VariaUI includes pre-built utility tabs so you don't have to code them from scratch!
+VariaUI includes pre-built utility tabs so you don't have to code them from scratch! These built-in tabs seamlessly utilize the expandable group layouts.
 
 | Method | Description |
 | --- | --- |
@@ -77,9 +79,9 @@ Window:CreateIntegrationTab({ Name = "Discord Integration" })
 
 ---
 
-## 📁 3. Layout: Categories, Tabs & Sections
+## 📁 3. Layout: Categories, Tabs, Sections & Expandables
 
-Keep your interface organized by nesting elements logically: **Category ➔ Tab ➔ Section ➔ Component**.
+Keep your interface organized by nesting elements logically: **Category ➔ Tab ➔ Section ➔ Expandable Group (Optional) ➔ Component**.
 
 ```lua
 -- 1. Create a non-clickable text label in the sidebar to group tabs
@@ -87,14 +89,37 @@ Window:CreateTabCategory("Main Features")
 
 -- 2. Create a clickable tab in the sidebar
 local MainTab = Window:CreateTab({
-    Name = "Combat",
-    Icon = "rbxassetid://123456789", -- Optional
-    Columns = 1,                     -- Grid layout columns (Default: 1)
-    RowHeight = 44                   -- Row height for grid layouts
+    Name = "General",
+    Icon = "rbxassetid://123456789" -- Optional
 })
 
 -- 3. Create a visual grouping box inside the tab
-local CombatSection = MainTab:CreateSection("Aimbot Settings")
+local GeneralSection = MainTab:CreateSection("Player Settings")
+
+-- 4. Create an Expandable Group inside the section (Great for hiding advanced settings!)
+local AdvancedGroup = GeneralSection:CreateExpandableGroup("Advanced Options", false) -- false = closed by default
+
+```
+
+### 🔲 Multi-Column (Grid) Layouts
+
+Tabs, Sections, and Expandable Groups all feature native support for multi-column grids! Simply pass the `columns` and `rowHeight` parameters when creating them.
+
+Note: When using grids for standard elements (like toggles/buttons), use a `rowHeight` of ~`42`. Elements with descriptions require a `rowHeight` of `52`.
+
+```lua
+-- Create a Section with 2 columns
+local GridSection = MainTab:CreateSection("Grid Layout", nil, 2, 42)
+
+GridSection:CreateToggle({ Title = "Row 1 Left" })
+GridSection:CreateToggle({ Title = "Row 1 Right" })
+
+-- Create an Expandable Group with 3 columns inside a section
+local TripleGroup = GeneralSection:CreateExpandableGroup("Quick Actions", true, 3, 42)
+
+TripleGroup:CreateButton({ Title = "Action A" })
+TripleGroup:CreateButton({ Title = "Action B" })
+TripleGroup:CreateButton({ Title = "Action C" })
 
 ```
 
@@ -102,38 +127,38 @@ local CombatSection = MainTab:CreateSection("Aimbot Settings")
 
 ## 🧩 4. Component Library
 
-Parent your components to any `Tab` or `Section`. All components support a `Flag` property, which acts as a unique ID for saving and loading configurations.
+Parent your components to any `Tab`, `Section`, or `ExpandableGroup`. All components support a `Flag` property, which acts as a unique ID for saving and loading configurations.
 
 ### 🔘 Button
 
 A standard interactable button. Can chain inline keybinds or color pickers.
 
 ```lua
-local MyButton = CombatSection:CreateButton({
-    Title = "Execute Script",
-    Description = "Runs the main loop.",
+local MyButton = GeneralSection:CreateButton({
+    Title = "Submit Data",
+    Description = "Sends the current data to the server.",
     TextColor = Color3.fromRGB(255, 255, 255),
     Callback = function()
-        print("Button clicked!")
+        print("Data submitted!")
     end,
 })
 
-MyButton:SetTitle("Run Now!") -- Update title dynamically
+MyButton:SetTitle("Submit Now!") -- Update title dynamically
 
 ```
 
 ### 🎚️ Toggle
 
-An on/off switch component.
+An on/off switch component. Toggles visually sync with your custom theme colors and border settings natively.
 
 ```lua
-local MyToggle = CombatSection:CreateToggle({
-    Title = "Auto-Farm",
-    Description = "Automatically attacks nearby enemies.",
+local MyToggle = GeneralSection:CreateToggle({
+    Title = "Enable Notifications",
+    Description = "Shows popup alerts on your screen.",
     Default = false,
-    Flag = "AutoFarm_Toggle", 
+    Flag = "Notify_Toggle", 
     Callback = function(state)
-        print("Auto-Farm is:", state)
+        print("Notifications enabled:", state)
     end,
 })
 
@@ -141,11 +166,11 @@ local MyToggle = CombatSection:CreateToggle({
 MyToggle:AddKeybind({
     Title = "Toggle Shortcut",
     Default = Enum.KeyCode.F,
-    Flag = "AutoFarm_Key"
+    Flag = "Notify_Key"
 }):AddColorPicker({
-    Title = "ESP Color",
-    Default = Color3.fromRGB(255, 0, 0),
-    Flag = "AutoFarm_Color"
+    Title = "Alert Color",
+    Default = Color3.fromRGB(255, 255, 0),
+    Flag = "Notify_Color"
 })
 
 ```
@@ -155,7 +180,7 @@ MyToggle:AddKeybind({
 A draggable slider for numerical values.
 
 ```lua
-local MySlider = CombatSection:CreateSlider({
+local MySlider = GeneralSection:CreateSlider({
     Title = "WalkSpeed",
     Description = "Adjusts your character's speed.",
     Min = 16,
@@ -172,29 +197,29 @@ local MySlider = CombatSection:CreateSlider({
 
 ### 📋 Dropdowns (Single & Multi)
 
-Searchable dropdown menus for selecting from a list of options.
+Searchable dropdown menus for selecting from a list of options. These gracefully pop out over other elements using the built-in overlay system.
 
 ```lua
 -- Single Selection
-CombatSection:CreateDropdown({
-    Title = "Target Priority",
-    Description = "Who should the aimbot target first?",
-    Options = {"Distance", "Health", "Threat"},
-    Default = "Distance",
-    Flag = "Target_Dropdown",
+GeneralSection:CreateDropdown({
+    Title = "Graphics Quality",
+    Description = "Set the rendering quality.",
+    Options = {"Low", "Medium", "High"},
+    Default = "Medium",
+    Flag = "Graphics_Dropdown",
     Callback = function(selectedValue)
-        print("Targeting by:", selectedValue)
+        print("Quality set to:", selectedValue)
     end,
 })
 
 -- Multiple Selection
-CombatSection:CreateMultiDropdown({
-    Title = "ESP Entities",
-    Options = {"Players", "NPCs", "Items", "Vehicles"},
-    Default = {"Players", "Items"},
-    Flag = "ESP_MultiDrop",
+GeneralSection:CreateMultiDropdown({
+    Title = "Render Elements",
+    Options = {"Shadows", "Reflections", "Particles", "Textures"},
+    Default = {"Shadows", "Textures"},
+    Flag = "Render_MultiDrop",
     Callback = function(selectedList)
-        print("Showing ESP for:", table.concat(selectedList, ", "))
+        print("Rendering:", table.concat(selectedList, ", "))
     end,
 })
 
@@ -203,8 +228,8 @@ CombatSection:CreateMultiDropdown({
 ### ⌨️ Text Inputs (String & Number)
 
 ```lua
--- String Input
-CombatSection:CreateStringInput({
+-- String Input (Includes an expand button for multi-line text)
+GeneralSection:CreateStringInput({
     Title = "Custom Status",
     Placeholder = "Enter text...",
     Default = "AFK",
@@ -215,8 +240,8 @@ CombatSection:CreateStringInput({
 })
 
 -- Number Input
-CombatSection:CreateInput({
-    Title = "Custom Field of View",
+GeneralSection:CreateInput({
+    Title = "Field of View",
     Placeholder = "70",
     Default = 70,
     Min = 30,
@@ -232,7 +257,7 @@ CombatSection:CreateInput({
 ### 🎨 Color Picker & 🔑 Keybind (Standalone)
 
 ```lua
-CombatSection:CreateColorPicker({
+GeneralSection:CreateColorPicker({
     Title = "UI Accent Color",
     Default = Color3.fromRGB(51, 144, 236),
     Flag = "Accent_Color",
@@ -241,13 +266,13 @@ CombatSection:CreateColorPicker({
     end,
 })
 
-CombatSection:CreateKeybind({
-    Title = "Panic Button",
-    Description = "Instantly closes the game.",
+GeneralSection:CreateKeybind({
+    Title = "Hide Interface",
+    Description = "Quickly hides the menu.",
     Default = Enum.KeyCode.End,
-    Flag = "Panic_Key",
+    Flag = "Hide_Key",
     Callback = function(key)
-        game:Shutdown()
+        Window:ToggleMinimize()
     end,
 })
 
@@ -267,14 +292,14 @@ When you create a component, it returns an API object. You can use this to progr
 | `Component:AddColorPicker(config)` | Appends an inline color picker to the right side of the row. |
 
 ```lua
-local GodModeToggle = CombatSection:CreateToggle({ Title = "God Mode", Flag = "GodMode" })
+local DebugToggle = GeneralSection:CreateToggle({ Title = "Debug Mode", Flag = "DebugMode" })
 
 -- Force it on via script
-GodModeToggle:SetValue(true)
+DebugToggle:SetValue(true)
 
 -- Read the state later
-if GodModeToggle:GetValue() == true then
-    print("Player is invincible!")
+if DebugToggle:GetValue() == true then
+    print("System is in debug state!")
 end
 
 ```
@@ -287,13 +312,13 @@ These functions are called directly on `UILibrary` and handle configuration savi
 
 ### Configuration Saving & Loading
 
-VariaUI automatically formats `Color3` values and keybinds safely for JSON encoding.
+VariaUI uses unique `Flag` strings to manage states. It automatically formats `Color3` values and keybinds safely for JSON encoding, regardless of whether a component is in a Section or hidden inside a collapsed Expandable Group.
 
 ```lua
 -- SAVING: Get all current UI values by their Flags
 local currentConfig = UILibrary:GetSettings()
 local jsonString = game:GetService("HttpService"):JSONEncode(currentConfig)
-writefile("MyHubConfig.json", jsonString)
+writefile("MyConfig.json", jsonString) -- your custom function to write setting
 
 -- LOADING: Apply a saved table back to the UI
 local savedTable = game:GetService("HttpService"):JSONDecode(readfile("MyHubConfig.json"))
@@ -316,7 +341,7 @@ UILibrary:Notify({
 
 ### Dynamic Theming
 
-Update the global theme colors dynamically. VariaUI automatically re-renders all existing components to match the new theme.
+Update the global theme colors dynamically. VariaUI automatically re-renders all existing components (including toggles, strokes, text, and nested groups) to flawlessly match the new theme.
 
 ```lua
 UILibrary:SetTheme({
