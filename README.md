@@ -15,7 +15,7 @@ To begin using VariaUI, load the library and initialize your main **Window**.
 > **💡 Pro Tip:** If you are using a custom theme, apply it using `UILibrary:SetTheme()` *before* creating your window to ensure all components load with your custom colors instantly!
 > 
 > 
-> **💡 Start Minimized:** If you want your UI to start as a small floating bubble instead of fully open, simply call `Window:Minimize()` at the very end of your script.
+> **💡 Start Minimized:** If you want your UI to start as a small floating bubble instead of fully open, simply pass `true` to the `StartUp()` function or call `Window:Minimize()` at the very end of your script.
 > 
 > 
 
@@ -32,7 +32,7 @@ VariaUI:SetTheme({
 
 -- Initialize the Main Window
 local Window = VariaUI:CreateWindow({
-    Title = "VariaUI Hub",
+    Title = "newName Interface",
     SubTitle = "v1.1.0",
     Size = UDim2.new(0, 560, 0, 380),    -- Optional: Default size
     MinSize = Vector2.new(380, 280),     -- Optional: Minimum drag size
@@ -53,30 +53,27 @@ Once your `Window` is created, you can control its behavior and layout using the
 
 | Method | Description |
 | --- | --- |
-| `Window:SetVisible(boolean)` | Hides or shows the entire UI without destroying it. |
-| `Window:Minimize()` | Minimizes the UI into a floating, draggable icon bubble. |
-| `Window:Restore()` | Restores the UI from the minimized bubble state. |
-| `Window:ToggleMinimize()` | Toggles between the minimized and restored states. |
-| `Window:Destroy()` | Completely deletes the UI and disconnects all events. |
-| `Window:OnClose(callback)` | Sets the function that runs when the "X" close button is clicked. |
-| `Window:SetWindowIcon(assetId)` | Changes the top-bar window icon asset ID. |
-| `Window:SetBubbleIcon(assetId)` | Changes the minimized draggable bubble icon asset ID. |
-| `Window:SetToggleKey(keyCode)` | Binds a new keyboard shortcut to show/hide the menu. |
+| `Window:SetVisible(boolean)` | Hides or shows the entire UI without destroying it.|
+| `Window:Minimize()` | Minimizes the UI into a floating, draggable icon bubble.|
+| `Window:Restore()` | Restores the UI from the minimized bubble state.|
+| `Window:ToggleMinimize()` | Toggles between the minimized and restored states.|
+| `Window:Destroy()` | Completely deletes the UI and disconnects all events.|
+| `Window:OnClose(callback)` | Sets the function that runs when the "X" close button is clicked.|
+| `Window:SetWindowIcon(assetId)` | Changes the top-bar window icon asset ID.|
+| `Window:SetBubbleIcon(assetId)` | Changes the minimized draggable bubble icon asset ID.|
+| `Window:SetToggleKey(keyCode)` | Binds a new keyboard shortcut to show/hide the menu.|
+| `Window:OnChange(callback)` | Registers a function that fires automatically whenever any setting is changed (includes a built-in 0.5s debounce to prevent spam).|
+| `Window:StartUp(savedData, startMinimized)` | Initializes the UI, optionally loading a saved configuration table and choosing if it should start minimized.|
 
 ### Built-in Feature Tabs
 
 VariaUI includes pre-built utility tabs so you don't have to code them from scratch!
 
-| Method | Description |
-| --- | --- |
-| `Window:CreateThemeTab(config)` | Generates a complete "Theme Settings" tab for live color tweaking. |
-| `Window:CreateIntegrationTab(config)` | Generates a "Webhooks" tab for easy Discord webhook testing/saving. |
-
 ```lua
 -- Example: Instantly add Theme and Webhook controls to your UI
-Window:CreateTabCategory("Utility")
-Window:CreateThemeTab({ Name = "UI Customization" })
-Window:CreateIntegrationTab({ Name = "Discord Integration" })
+Window:CreateTabCategory("dummyCategory")
+Window:CreateThemeTab({ Name = "dummyThemeTab" })
+Window:CreateIntegrationTab({ Name = "dummyIntegrationTab" })
 
 ```
 
@@ -90,19 +87,19 @@ Keep your interface organized by nesting elements logically: **Category ➔ Tab 
 
 ```lua
 -- 1. Create a non-clickable text label in the sidebar to group tabs
-Window:CreateTabCategory("Main Features")
+Window:CreateTabCategory("dummyMainCategory")
 
 -- 2. Create a clickable tab in the sidebar
 local MainTab = Window:CreateTab({
-    Name = "General",
+    Name = "dummyTab",
     Icon = "rbxassetid://123456789" -- Optional
 })
 
 -- 3. Create a visual grouping box inside the tab
-local GeneralSection = MainTab:CreateSection("Player Settings")
+local GeneralSection = MainTab:CreateSection("dummySection")
 
--- 4. Create an Expandable Group inside the section (Great for hiding advanced settings!)
-local AdvancedGroup = GeneralSection:CreateExpandableGroup("Advanced Options", false) -- false = closed by default
+-- 4. Create an Expandable Group inside the section
+local AdvancedGroup = GeneralSection:CreateExpandableGroup("dummyExpandable", false) -- false = closed by default
 
 ```
 
@@ -112,17 +109,17 @@ Tabs, Sections, and Expandable Groups all feature native support for multi-colum
 
 ```lua
 -- Create a Section with 2 columns
-local GridSection = MainTab:CreateSection("Grid Layout", nil, 2, 42)
+local GridSection = MainTab:CreateSection("dummyGridSection", nil, 2, 42)
 
-GridSection:CreateToggle({ Title = "Row 1 Left" })
-GridSection:CreateToggle({ Title = "Row 1 Right" })
+GridSection:CreateToggle({ Title = "dummyLeftToggle" })
+GridSection:CreateToggle({ Title = "dummyRightToggle" })
 
 -- Create an Expandable Group with 3 columns inside a section
-local TripleGroup = GeneralSection:CreateExpandableGroup("Quick Actions", true, 3, 42)
+local TripleGroup = GeneralSection:CreateExpandableGroup("dummyTripleGroup", true, 3, 42)
 
-TripleGroup:CreateButton({ Title = "Action A" })
-TripleGroup:CreateButton({ Title = "Action B" })
-TripleGroup:CreateButton({ Title = "Action C" })
+TripleGroup:CreateButton({ Title = "dummyActionA" })
+TripleGroup:CreateButton({ Title = "dummyActionB" })
+TripleGroup:CreateButton({ Title = "dummyActionC" })
 
 ```
 
@@ -138,11 +135,11 @@ A standard interactable button. Can chain inline keybinds or color pickers.
 
 ```lua
 local MyButton = GeneralSection:CreateButton({
-    Title = "Submit Data",
-    Description = "Sends the current data to the server.",
+    Title = "dummyButton",
+    Description = "dummy description text here.",
     TextColor = Color3.fromRGB(255, 255, 255),
     Callback = function()
-        print("Data submitted!")
+        print("dummyAction triggered!")
     end,
 })
 
@@ -154,24 +151,24 @@ An on/off switch component. Toggles visually sync with your custom theme colors.
 
 ```lua
 local MyToggle = GeneralSection:CreateToggle({
-    Title = "Enable Notifications",
-    Description = "Shows popup alerts on your screen.",
+    Title = "dummyToggle",
+    Description = "dummy toggle description.",
     Default = false,
-    Flag = "Notify_Toggle", 
+    Flag = "dummyToggle_Flag", 
     Callback = function(state)
-        print("Notifications enabled:", state)
+        print("dummyToggle state:", state)
     end,
 })
 
 -- Example: Chaining inline elements to a Toggle
 MyToggle:AddKeybind({
-    Title = "Toggle Shortcut",
+    Title = "dummyShortcut",
     Default = Enum.KeyCode.F,
-    Flag = "Notify_Key"
+    Flag = "dummyShortcut_Flag"
 }):AddColorPicker({
-    Title = "Alert Color",
+    Title = "dummyColor",
     Default = Color3.fromRGB(255, 255, 0),
-    Flag = "Notify_Color"
+    Flag = "dummyColor_Flag"
 })
 
 ```
@@ -182,15 +179,15 @@ A draggable slider for numerical values.
 
 ```lua
 GeneralSection:CreateSlider({
-    Title = "WalkSpeed",
-    Description = "Adjusts your character's speed.",
-    Min = 16,
+    Title = "dummySlider",
+    Description = "dummy slider description.",
+    Min = 1,
     Max = 100,
-    Default = 16,
+    Default = 50,
     Increment = 1,
-    Flag = "WalkSpeed_Slider",
+    Flag = "dummySlider_Flag",
     Callback = function(value)
-        game.Players.LocalPlayer.Character.Humanoid.WalkSpeed = value
+        print("dummySlider value changed to:", value)
     end,
 })
 
@@ -203,23 +200,23 @@ Searchable dropdown menus for selecting from a list of options.
 ```lua
 -- Single Selection
 GeneralSection:CreateDropdown({
-    Title = "Graphics Quality",
-    Options = {"Low", "Medium", "High"},
-    Default = "Medium",
-    Flag = "Graphics_Dropdown",
+    Title = "dummyDropdown",
+    Options = {"dummyOption1", "dummyOption2", "dummyOption3"},
+    Default = "dummyOption2",
+    Flag = "dummyDropdown_Flag",
     Callback = function(selectedValue)
-        print("Quality set to:", selectedValue)
+        print("dummyOption set to:", selectedValue)
     end,
 })
 
 -- Multiple Selection
 GeneralSection:CreateMultiDropdown({
-    Title = "Render Elements",
-    Options = {"Shadows", "Reflections", "Particles", "Textures"},
-    Default = {"Shadows", "Textures"},
-    Flag = "Render_MultiDrop",
+    Title = "dummyMultiDropdown",
+    Options = {"dummyChoiceA", "dummyChoiceB", "dummyChoiceC", "dummyChoiceD"},
+    Default = {"dummyChoiceA", "dummyChoiceD"},
+    Flag = "dummyMultiDropdown_Flag",
     Callback = function(selectedList)
-        print("Rendering:", table.concat(selectedList, ", "))
+        print("Selected:", table.concat(selectedList, ", "))
     end,
 })
 
@@ -227,16 +224,16 @@ GeneralSection:CreateMultiDropdown({
 
 ### 🗂️ Priority List
 
-A fully interactive list that allows users to drag and drop items to reorder them. Perfect for target prioritization systems.
+A fully interactive list that allows users to drag and drop items to reorder them.
 
 ```lua
 GeneralSection:CreatePriorityList({
-    Title = "Kill Aura Priority",
-    Description = "Rank who gets attacked first.",
-    Items = {"Medics", "Snipers", "Tanks", "Grunts"},
-    Flag = "Utility_TargetPriority",
+    Title = "dummyPriorityList",
+    Description = "Drag to reorder dummy items.",
+    Items = {"dummyItemA", "dummyItemB", "dummyItemC", "dummyItemD"},
+    Flag = "dummyPriority_Flag",
     Callback = function(items)
-        print("Priority updated!")
+        print("dummyPriority updated!")
     end
 })
 
@@ -247,25 +244,25 @@ GeneralSection:CreatePriorityList({
 ```lua
 -- String Input (Includes an expand button for multi-line text)
 GeneralSection:CreateStringInput({
-    Title = "Custom Status",
+    Title = "dummyStringInput",
     Placeholder = "Enter text...",
-    Default = "AFK",
-    Flag = "Status_Input",
+    Default = "dummyDefaultText",
+    Flag = "dummyString_Flag",
     Callback = function(text)
-        print("Status updated to:", text)
+        print("Text updated to:", text)
     end,
 })
 
 -- Number Input
 GeneralSection:CreateInput({
-    Title = "Field of View",
+    Title = "dummyNumberInput",
     Placeholder = "70",
     Default = 70,
     Min = 30,
     Max = 120,
-    Flag = "FOV_Input",
+    Flag = "dummyNumber_Flag",
     Callback = function(value)
-        workspace.CurrentCamera.FieldOfView = value
+        print("Number updated to:", value)
     end,
 })
 
@@ -275,18 +272,18 @@ GeneralSection:CreateInput({
 
 ```lua
 GeneralSection:CreateColorPicker({
-    Title = "UI Accent Color",
+    Title = "dummyColorPicker",
     Default = Color3.fromRGB(51, 144, 236),
-    Flag = "Accent_Color",
+    Flag = "dummyColorPicker_Flag",
     Callback = function(color)
         VariaUI:SetTheme({ Secondary = color })
     end,
 })
 
 GeneralSection:CreateKeybind({
-    Title = "Hide Interface",
+    Title = "dummyKeybind",
     Default = Enum.KeyCode.End,
-    Flag = "Hide_Key",
+    Flag = "dummyKeybind_Flag",
     Callback = function(key)
         Window:ToggleMinimize()
     end,
@@ -302,20 +299,20 @@ When you create a component, it returns an API object. You can use this to progr
 
 | Method | Description |
 | --- | --- |
-| `Component:SetValue(value)` | Forces the component to a new value and triggers its callback. |
-| `Component:GetValue()` | Returns the current value of the component. |
-| `Component:AddKeybind(config)` | Appends an inline keybind button to the right side of the row. |
-| `Component:AddColorPicker(config)` | Appends an inline color picker to the right side of the row. |
+| `Component:SetValue(value)` | Forces the component to a new value and triggers its callback.|
+| `Component:GetValue()` | Returns the current value of the component.|
+| `Component:AddKeybind(config)` | Appends an inline keybind button to the right side of the row.|
+| `Component:AddColorPicker(config)` | Appends an inline color picker to the right side of the row.|
 
 ```lua
-local DebugToggle = GeneralSection:CreateToggle({ Title = "Debug Mode", Flag = "DebugMode" })
+local dummyToggleRef = GeneralSection:CreateToggle({ Title = "dummyState", Flag = "dummyState_Flag" })
 
 -- Force it on via script
-DebugToggle:SetValue(true)
+dummyToggleRef:SetValue(true)
 
 -- Read the state later
-if DebugToggle:GetValue() == true then
-    print("System is in debug state!")
+if dummyToggleRef:GetValue() == true then
+    print("State is currently active!")
 end
 
 ```
@@ -328,17 +325,31 @@ These functions are called directly on the library and handle configuration savi
 
 ### Configuration Saving & Loading
 
-VariaUI uses unique `Flag` strings to manage states. It automatically formats `Color3` values and keybinds safely for JSON encoding.
+VariaUI uses unique `Flag` strings to manage states. It automatically formats `Color3` values and keybinds safely for JSON encoding. You can use the `OnChange` method to create a highly efficient auto-save system!
 
 ```lua
--- SAVING: Get all current UI values by their Flags
-local currentConfig = Window:GetSettings()
-local jsonString = game:GetService("HttpService"):JSONEncode(currentConfig)
-writefile("MyConfig.json", jsonString) 
+local HttpService = game:GetService("HttpService")
+local saveFileName = "dummyConfig.json"
 
--- LOADING: Apply a saved table back to the UI
-local savedTable = game:GetService("HttpService"):JSONDecode(readfile("MyHubConfig.json"))
-Window:LoadSettings(savedTable)
+-- AUTO-SAVING: Fires automatically whenever a user changes a setting (slider, toggle, etc.)
+Window:OnChange(function(currentSettings)
+    -- currentSettings is already a safe, formatted table!
+    local jsonString = HttpService:JSONEncode(currentSettings)
+    DummySaveFunction(saveFileName, jsonString)
+    print("Configuration auto-saved!")
+end)
+
+-- LOADING & STARTUP: Load your settings and initialize the UI in one step
+local savedTable = nil
+local loadedJson = DummyLoadFunction(saveFileName)
+
+if loadedJson then
+    savedTable = HttpService:JSONDecode(loadedJson)
+end
+
+-- Initialize the window with the saved data, and choose whether it starts minimized
+local startMinimized = false
+Window:StartUp(savedTable, startMinimized)
 
 ```
 
@@ -349,7 +360,7 @@ Trigger a clean, animated on-screen toast notification.
 ```lua
 VariaUI:Notify({
     Title = "Success!",
-    Content = "Your configuration has been saved successfully.",
+    Content = "Your dummy configuration has been applied successfully.",
     Duration = 3.5 -- Display duration in seconds
 })
 
