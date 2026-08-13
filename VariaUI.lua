@@ -2895,6 +2895,7 @@ function Window:LoadSettings(savedData: { [string]: any })
 
 	ctx.IsLoading = false
 
+	-- Force refresh tab borders after loading configurations
 	for _, tab in ipairs(self._tabs) do
 		local stroke = tab._button:FindFirstChildWhichIsA("UIStroke")
 		if stroke then
