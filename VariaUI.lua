@@ -2501,15 +2501,19 @@ function Window.new(config: WindowConfig)
 		for _, tab in ipairs(self._tabs) do
 			local stroke = tab._button:FindFirstChildWhichIsA("UIStroke")
 			if tab._button == self._activeTabButton then
-				tab._button.BackgroundColor3 = Theme.Background
-				tab._button.BackgroundTransparency = Theme.UseGradient and 1 or 0
-				tab._button.TextColor3 = Theme.TextPrimary
-				if stroke then stroke.Color = Theme.Secondary; stroke.Transparency = 0 end
+				Tween(tab._button, {
+					BackgroundColor3 = Theme.Background,
+					BackgroundTransparency = Theme.UseGradient and 1 or 0,
+					TextColor3 = Theme.TextPrimary
+				})
+				if stroke then Tween(stroke, { Color = Theme.Secondary, Transparency = 0 }) end
 			else
-				tab._button.BackgroundColor3 = Theme.Background
-				tab._button.BackgroundTransparency = 0
-				tab._button.TextColor3 = Theme.TextSecondary
-				if stroke then stroke.Color = Theme.Border; stroke.Transparency = 0 end
+				Tween(tab._button, {
+					BackgroundColor3 = Theme.Background,
+					BackgroundTransparency = 0,
+					TextColor3 = Theme.TextSecondary
+				})
+				if stroke then Tween(stroke, { Color = Theme.Border, Transparency = 0 }) end
 			end
 		end
 	end)
@@ -2894,18 +2898,6 @@ function Window:LoadSettings(savedData: { [string]: any })
 	end
 
 	ctx.IsLoading = false
-
-	-- Force refresh tab borders after loading configurations
-	for _, tab in ipairs(self._tabs) do
-		local stroke = tab._button:FindFirstChildWhichIsA("UIStroke")
-		if stroke then
-			if tab._button == self._activeTabButton then
-				stroke.Color = Theme.Secondary
-			else
-				stroke.Color = Theme.Border
-			end
-		end
-	end
 end
 
 function Window:OnChange(callback: (settings: { [string]: any }) -> ())
