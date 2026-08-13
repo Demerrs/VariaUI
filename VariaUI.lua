@@ -144,6 +144,7 @@ export type WindowConfig = {
 	MinSize: Vector2?,
 	MaxSize: Vector2?,
 	ToggleKey: Enum.KeyCode?,
+	StartHidden: boolean?,
 	OnClose: (() -> ())?,
 }
 
@@ -1593,12 +1594,12 @@ local function CreateStringInput(ctx: any, parent: Instance, config: StringInput
 		box.PlaceholderColor3 = Theme.TextMuted
 		local boxStroke = box:FindFirstChildWhichIsA("UIStroke")
 		if boxStroke then boxStroke.Color = Theme.Border end
-		
+
 		expandButton.BackgroundColor3 = Theme.Background
 		expandButton.TextColor3 = Theme.TextSecondary
 		local expandBtnStroke = expandButton:FindFirstChildWhichIsA("UIStroke")
 		if expandBtnStroke then expandBtnStroke.Color = Theme.Border end
-		
+
 		expandPanel.BackgroundColor3 = Theme.Elevated
 		local panelStroke = expandPanel:FindFirstChildWhichIsA("UIStroke")
 		if panelStroke then panelStroke.Color = Theme.Border end
@@ -2223,6 +2224,7 @@ function Window.new(config: WindowConfig)
 		Size = config.Size or UDim2.new(0, 560, 0, 380),
 		BackgroundTransparency = 1,
 		ClipsDescendants = true,
+		Visible = config.StartHidden == false,
 		Parent = screenGui,
 	})
 	AddCorner(main, Theme.CornerRadius)
@@ -2896,6 +2898,20 @@ end
 
 function Window:OnChange(callback: (settings: { [string]: any }) -> ())
 	self._ctx.OnChange = callback
+end
+
+function Window:StartUp(savedData: { [string]: any }?, startMinimized: boolean?)
+	if savedData then
+		self:LoadSettings(savedData)
+	end
+
+	if startMinimized then
+		self:Minimize()
+	else
+		self._minimized = false
+		self._main.Visible = true
+		if self._bubble then self._bubble.Visible = false end
+	end
 end
 
 function UILibrary:CreateWindow(config: WindowConfig?) return Window.new(config or {}) end
