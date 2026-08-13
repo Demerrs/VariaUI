@@ -198,15 +198,46 @@ local GlobalIsDragging = false
 -- ============================================================
 
 local function NewContext()
-	return {
-		Settings = {} :: { [string]: any },
+	local ctx = {
+		_RawSettings = {} :: { [string]: any },
 		Registry = {} :: { [string]: any },
 		SearchableRows = {} :: { { Row: Frame, SearchText: string } },
 		SectionsData = {} :: { { Container: Frame, List: Frame, TitleLower: string } },
 		ExpandableGroups = {} :: { { Container: Frame, Content: Frame, Arrow: TextLabel?, TitleLower: string, GetExpanded: () -> boolean } },
 		BoundKeys = {} :: { [Enum.KeyCode]: boolean },
 		ActiveConnections = {} :: { RBXScriptConnection },
+		OnChange = nil :: ((settings: { [string]: any }) -> ())?,
+		IsLoading = false,
+		SaveTick = 0,
 	}
+
+	ctx.Settings = setmetatable({}, {
+		__index = ctx._RawSettings,
+		__newindex = function(_, key, value)
+			ctx._RawSettings[key] = value
+
+			if ctx.OnChange and not ctx.IsLoading then
+				ctx.SaveTick += 1
+				local currentTick = ctx.SaveTick
+
+				task.delay(0.5, function()
+					if ctx.SaveTick == currentTick then
+						local safeSettings = {}
+						for k, v in pairs(ctx._RawSettings) do
+							if typeof(v) == "Color3" then
+								safeSettings[k] = { type = "Color3", r = v.R, g = v.G, b = v.B }
+							else
+								safeSettings[k] = v
+							end
+						end
+						task.spawn(ctx.OnChange, safeSettings)
+					end
+				end)
+			end
+		end
+	})
+
+	return ctx
 end
 
 local function TrackConnection(ctx: any, conn: RBXScriptConnection): RBXScriptConnection
@@ -1282,6 +1313,11 @@ local function CreateDropdown(ctx: any, parent: Instance, config: DropdownConfig
 		display.BackgroundColor3 = Theme.Background; display.TextColor3 = Theme.TextPrimary
 		list.BackgroundColor3 = Theme.Elevated; expandPanel.BackgroundColor3 = Theme.Elevated
 
+		expandButton.BackgroundColor3 = Theme.Background
+		expandButton.TextColor3 = Theme.TextSecondary
+		local expandBtnStroke = expandButton:FindFirstChildWhichIsA("UIStroke")
+		if expandBtnStroke then expandBtnStroke.Color = Theme.Border end
+
 		if expandTitle then expandTitle.TextColor3 = Theme.TextPrimary end
 		expandClose.BackgroundColor3 = Theme.Background
 		expandClose.TextColor3 = Theme.TextSecondary
@@ -1557,7 +1593,12 @@ local function CreateStringInput(ctx: any, parent: Instance, config: StringInput
 		box.PlaceholderColor3 = Theme.TextMuted
 		local boxStroke = box:FindFirstChildWhichIsA("UIStroke")
 		if boxStroke then boxStroke.Color = Theme.Border end
-
+		
+		expandButton.BackgroundColor3 = Theme.Background
+		expandButton.TextColor3 = Theme.TextSecondary
+		local expandBtnStroke = expandButton:FindFirstChildWhichIsA("UIStroke")
+		if expandBtnStroke then expandBtnStroke.Color = Theme.Border end
+		
 		expandPanel.BackgroundColor3 = Theme.Elevated
 		local panelStroke = expandPanel:FindFirstChildWhichIsA("UIStroke")
 		if panelStroke then panelStroke.Color = Theme.Border end
@@ -1894,7 +1935,7 @@ local function CreatePriorityList(ctx: any, parent: Instance, config: PriorityLi
 					dragData = rowInfo
 
 					local mousePos = UserInputService:GetMouseLocation()
-					
+
 					dragOffset = Vector2.new(itemRow.AbsoluteSize.X / 2, itemRow.AbsoluteSize.Y / 2)
 
 					ghostFrame = itemRow:Clone()
@@ -2802,7 +2843,7 @@ end
 
 function Window:GetSettings(): { [string]: any }
 	local safeSettings = {}
-	for key, val in pairs(self._ctx.Settings) do
+	for key, val in pairs(self._ctx._RawSettings) do
 		if typeof(val) == "Color3" then
 			safeSettings[key] = { type = "Color3", r = val.R, g = val.G, b = val.B }
 		else
@@ -2815,6 +2856,8 @@ end
 function Window:LoadSettings(savedData: { [string]: any })
 	if type(savedData) ~= "table" then return end
 	local ctx = self._ctx
+
+	ctx.IsLoading = true
 
 	local function processFlag(flag, value)
 		local parsedValue = value
@@ -2847,6 +2890,12 @@ function Window:LoadSettings(savedData: { [string]: any })
 			processFlag(flag, value)
 		end
 	end
+
+	ctx.IsLoading = false
+end
+
+function Window:OnChange(callback: (settings: { [string]: any }) -> ())
+	self._ctx.OnChange = callback
 end
 
 function UILibrary:CreateWindow(config: WindowConfig?) return Window.new(config or {}) end
