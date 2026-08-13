@@ -126,6 +126,15 @@ export type ColorPickerConfig = {
 	Callback: ((color: Color3) -> ())?,
 }
 
+export type PriorityListConfig = {
+	Title: string,
+	Description: string?,
+	TextColor: Color3?,
+	Items: { string },
+	Flag: string?,
+	Callback: ((items: { string }) -> ())?,
+}
+
 export type WindowConfig = {
 	Title: string?,
 	SubTitle: string?,
@@ -152,7 +161,7 @@ export type NotificationConfig = {
 }
 
 -- ============================================================
--- Theme
+-- Theme & Global State
 -- ============================================================
 
 local Theme = {
@@ -166,6 +175,8 @@ local Theme = {
 	Border = Color3.fromRGB(40, 40, 46),
 	Accent = Color3.fromRGB(51, 144, 236),
 	Secondary = Color3.fromRGB(38, 112, 190),
+	KnobColor = Color3.fromRGB(255, 255, 255),
+	ButtonTextColor = Color3.fromRGB(255, 255, 255),
 	TextPrimary = Color3.fromRGB(240, 240, 245),
 	TextSecondary = Color3.fromRGB(165, 165, 175),
 	TextMuted = Color3.fromRGB(115, 115, 125),
@@ -180,16 +191,32 @@ local Theme = {
 	TweenInfo = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
 }
 
+local GlobalIsDragging = false
+
 -- ============================================================
--- Utilities & Global Connection Tracking for Cleanup
+-- Per-Window Context
 -- ============================================================
 
-local ActiveConnections: { RBXScriptConnection } = {}
+local function NewContext()
+	return {
+		Settings = {} :: { [string]: any },
+		Registry = {} :: { [string]: any },
+		SearchableRows = {} :: { { Row: Frame, SearchText: string } },
+		SectionsData = {} :: { { Container: Frame, List: Frame, TitleLower: string } },
+		ExpandableGroups = {} :: { { Container: Frame, Content: Frame, Arrow: TextLabel?, TitleLower: string, GetExpanded: () -> boolean } },
+		BoundKeys = {} :: { [Enum.KeyCode]: boolean },
+		ActiveConnections = {} :: { RBXScriptConnection },
+	}
+end
 
-local function TrackConnection(conn: RBXScriptConnection): RBXScriptConnection
-	table.insert(ActiveConnections, conn)
+local function TrackConnection(ctx: any, conn: RBXScriptConnection): RBXScriptConnection
+	table.insert(ctx.ActiveConnections, conn)
 	return conn
 end
+
+-- ============================================================
+-- Utilities
+-- ============================================================
 
 local function FormatAssetId(id: string): string
 	if not id or id == "" then return "" end
@@ -265,26 +292,28 @@ local function GetOverlay(scope: Instance): Frame
 	return Create("Frame", {
 		Name = "__Overlay",
 		BackgroundTransparency = 1,
+		Position = UDim2.new(0, 0, 0, 0),
 		Size = UDim2.new(1, 0, 1, 0),
 		ZIndex = 1000,
 		Parent = screenGui,
 	}) :: Frame
 end
 
-local function MakeDraggable(dragHandle: GuiObject, target: GuiObject)
+local function MakeDraggable(ctx: any, dragHandle: GuiObject, target: GuiObject)
 	local dragging = false
-	local dragStart: Vector2
+	local dragStart: Vector3
 	local startPos: UDim2
 
-	TrackConnection(dragHandle.InputBegan:Connect(function(input: InputObject)
+	TrackConnection(ctx, dragHandle.InputBegan:Connect(function(input: InputObject)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			dragging = true
+			GlobalIsDragging = true
 			dragStart = input.Position
 			startPos = target.Position
 		end
 	end))
 
-	TrackConnection(UserInputService.InputChanged:Connect(function(input: InputObject)
+	TrackConnection(ctx, UserInputService.InputChanged:Connect(function(input: InputObject)
 		if dragging then
 			if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
 				local delta = input.Position - dragStart
@@ -298,9 +327,10 @@ local function MakeDraggable(dragHandle: GuiObject, target: GuiObject)
 		end
 	end))
 
-	TrackConnection(UserInputService.InputEnded:Connect(function(input: InputObject)
+	TrackConnection(ctx, UserInputService.InputEnded:Connect(function(input: InputObject)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			dragging = false
+			GlobalIsDragging = false
 		end
 	end))
 end
@@ -321,6 +351,8 @@ local Tooltip = {
 }
 
 local function ShowTooltip(scope: Instance, title: string, desc: string?)
+	if GlobalIsDragging then return end
+
 	local screenGui = scope:FindFirstAncestorWhichIsA("ScreenGui")
 	if not screenGui then return end
 
@@ -363,12 +395,12 @@ local function ShowTooltip(scope: Instance, title: string, desc: string?)
 	Tooltip.Frame.Visible = true
 
 	if Tooltip.Connection then Tooltip.Connection:Disconnect() end
-	Tooltip.Connection = TrackConnection(RunService.RenderStepped:Connect(function()
+	Tooltip.Connection = RunService.RenderStepped:Connect(function()
 		local mouse = UserInputService:GetMouseLocation()
 		if Tooltip.Frame then
 			Tooltip.Frame.Position = UDim2.fromOffset(mouse.X + 15, mouse.Y - 20)
 		end
-	end))
+	end)
 end
 
 local function HideTooltip()
@@ -387,12 +419,7 @@ end
 
 local UILibrary = {}
 UILibrary.__index = UILibrary
-UILibrary.Settings = {} :: { [string]: any }
 
-local Registry = {} :: { [string]: any }
-local SearchableRows = {} :: { { Row: Frame, SearchText: string } }
-local SectionsData = {} :: { { Container: Frame, List: Frame } }
-local BoundKeys = {} :: { [Enum.KeyCode]: boolean } 
 local NotificationScreenGui = nil
 
 function UILibrary:GetTargetGuiName(): string
@@ -499,7 +526,7 @@ end
 
 -- ---------- Component builders ----------
 
-local function BuildRow(parent: Instance, title: string, description: string?, textColor: Color3?, rightOffset: number?)
+local function BuildRow(ctx: any, parent: Instance, title: string, description: string?, textColor: Color3?, rightOffset: number?)
 	local baseOffset = rightOffset or 100
 	local inlineOffset = 0
 
@@ -574,19 +601,19 @@ local function BuildRow(parent: Instance, title: string, description: string?, t
 	end)
 
 	local hoverTick = 0
-	TrackConnection(row.MouseEnter:Connect(function()
+	TrackConnection(ctx, row.MouseEnter:Connect(function()
 		hoverTick = os.clock()
 		local currentTick = hoverTick
 		task.delay(0.5, function()
 			if hoverTick == currentTick then ShowTooltip(row, title, description) end
 		end)
 	end))
-	TrackConnection(row.MouseLeave:Connect(function()
+	TrackConnection(ctx, row.MouseLeave:Connect(function()
 		hoverTick = 0
 		HideTooltip()
 	end))
 
-	table.insert(SearchableRows, { 
+	table.insert(ctx.SearchableRows, { 
 		Row = row, 
 		SearchText = string.lower(title .. " " .. (description or ""))
 	})
@@ -610,27 +637,27 @@ end
 
 local CreateColorPicker
 
-local function ConstructKeybind(parent: Instance, config: KeybindConfig, isInline: boolean)
+local function ConstructKeybind(ctx: any, parent: Instance, config: KeybindConfig, isInline: boolean)
 	local rowObj, buttonParent, width
 	local key = config.Default or Enum.KeyCode.Unknown
 
 	if key ~= Enum.KeyCode.Unknown then
-		if BoundKeys[key] then
+		if ctx.BoundKeys[key] then
 			key = Enum.KeyCode.Unknown
 		else
-			BoundKeys[key] = true
+			ctx.BoundKeys[key] = true
 		end
 	end
 
 	if config.Flag then
-		UILibrary.Settings[config.Flag] = key.Name
+		ctx.Settings[config.Flag] = key.Name
 	end
 
 	if isInline then
 		buttonParent = parent
 		width = 60
 	else
-		rowObj = BuildRow(parent, config.Title, config.Description, config.TextColor, 74)
+		rowObj = BuildRow(ctx, parent, config.Title, config.Description, config.TextColor, 74)
 		buttonParent = rowObj.Instance
 		width = 64
 	end
@@ -665,7 +692,7 @@ local function ConstructKeybind(parent: Instance, config: KeybindConfig, isInlin
 			return true
 		end
 
-		if newKey ~= Enum.KeyCode.Unknown and BoundKeys[newKey] then
+		if newKey ~= Enum.KeyCode.Unknown and ctx.BoundKeys[newKey] then
 			UILibrary:Notify({
 				Title = "Key Unavailable",
 				Content = "The key [" .. newKey.Name .. "] is already bound to another action.",
@@ -676,27 +703,27 @@ local function ConstructKeybind(parent: Instance, config: KeybindConfig, isInlin
 		end
 
 		if key ~= Enum.KeyCode.Unknown then
-			BoundKeys[key] = nil
+			ctx.BoundKeys[key] = nil
 		end
 		if newKey ~= Enum.KeyCode.Unknown then
-			BoundKeys[newKey] = true
+			ctx.BoundKeys[newKey] = true
 		end
 
 		key = newKey
 		button.Text = key == Enum.KeyCode.Unknown and "[ None ]" or "[ " .. key.Name .. " ]"
-		if config.Flag then UILibrary.Settings[config.Flag] = key.Name end
+		if config.Flag then ctx.Settings[config.Flag] = key.Name end
 
 		if config.ChangedCallback then task.spawn(config.ChangedCallback, key) end
 
 		return true
 	end
 
-	TrackConnection(button.MouseButton1Click:Connect(function()
+	TrackConnection(ctx, button.MouseButton1Click:Connect(function()
 		waitingForInput = true
 		button.Text = "[ ... ]"
 	end))
 
-	TrackConnection(UserInputService.InputBegan:Connect(function(input, gpe)
+	TrackConnection(ctx, UserInputService.InputBegan:Connect(function(input, gpe)
 		if waitingForInput then
 			if input.UserInputType == Enum.UserInputType.Keyboard then
 				local blockList = { Enum.KeyCode.W, Enum.KeyCode.A, Enum.KeyCode.S, Enum.KeyCode.D, Enum.KeyCode.Space }
@@ -724,18 +751,18 @@ local function ConstructKeybind(parent: Instance, config: KeybindConfig, isInlin
 	end
 
 	if config.Flag then
-		Registry[config.Flag] = api
+		ctx.Registry[config.Flag] = api
 	end
 
 	return api
 end
 
-local function CreateKeybind(parent: Instance, config: KeybindConfig)
-	return ConstructKeybind(parent, config, false)
+local function CreateKeybind(ctx: any, parent: Instance, config: KeybindConfig)
+	return ConstructKeybind(ctx, parent, config, false)
 end
 
-local function CreateButton(parent: Instance, config: ButtonConfig)
-	local rowObj = BuildRow(parent, config.Title, config.Description, config.TextColor, 74)
+local function CreateButton(ctx: any, parent: Instance, config: ButtonConfig)
+	local rowObj = BuildRow(ctx, parent, config.Title, config.Description, config.TextColor, 74)
 
 	local button = Create("TextButton", {
 		Name = "Button",
@@ -745,7 +772,7 @@ local function CreateButton(parent: Instance, config: ButtonConfig)
 		BackgroundColor3 = Theme.Secondary,
 		Font = Theme.FontSemibold,
 		Text = "Run",
-		TextColor3 = Color3.new(1, 1, 1),
+		TextColor3 = Theme.ButtonTextColor,
 		TextSize = 13,
 		AutoButtonColor = false,
 		ZIndex = 11,
@@ -753,11 +780,14 @@ local function CreateButton(parent: Instance, config: ButtonConfig)
 	})
 	AddCorner(button, Theme.CornerRadiusSmall)
 
-	RegisterThemeRefresh(function() button.BackgroundColor3 = Theme.Secondary end)
+	RegisterThemeRefresh(function() 
+		button.BackgroundColor3 = Theme.Secondary
+		button.TextColor3 = Theme.ButtonTextColor 
+	end)
 
-	TrackConnection(button.MouseEnter:Connect(function() Tween(button, { BackgroundColor3 = Theme.Accent }) end))
-	TrackConnection(button.MouseLeave:Connect(function() Tween(button, { BackgroundColor3 = Theme.Secondary }) end))
-	TrackConnection(button.MouseButton1Click:Connect(function()
+	TrackConnection(ctx, button.MouseEnter:Connect(function() Tween(button, { BackgroundColor3 = Theme.Accent }) end))
+	TrackConnection(ctx, button.MouseLeave:Connect(function() Tween(button, { BackgroundColor3 = Theme.Secondary }) end))
+	TrackConnection(ctx, button.MouseButton1Click:Connect(function()
 		Tween(button, { BackgroundColor3 = Theme.Accent }, TweenInfo.new(0.08))
 		task.delay(0.08, function() 
 			if button and button.Parent then 
@@ -770,23 +800,23 @@ local function CreateButton(parent: Instance, config: ButtonConfig)
 	local api = {}
 	function api.AddKeybind(_self, subConfig: KeybindConfig)
 		rowObj.UpdateOffset(60)
-		ConstructKeybind(rowObj.InlineContainer, subConfig, true)
+		ConstructKeybind(ctx, rowObj.InlineContainer, subConfig, true)
 		return api
 	end
 	function api.AddColorPicker(_self, subConfig: ColorPickerConfig)
 		rowObj.UpdateOffset(36)
-		CreateColorPicker(rowObj.InlineContainer, subConfig, true)
+		CreateColorPicker(ctx, rowObj.InlineContainer, subConfig, true)
 		return api
 	end
 
 	return api
 end
 
-local function CreateToggle(parent: Instance, config: ToggleConfig)
-	local rowObj = BuildRow(parent, config.Title, config.Description, config.TextColor, 45)
+local function CreateToggle(ctx: any, parent: Instance, config: ToggleConfig)
+	local rowObj = BuildRow(ctx, parent, config.Title, config.Description, config.TextColor, 45)
 	local state = config.Default or false
 
-	if config.Flag then UILibrary.Settings[config.Flag] = state end
+	if config.Flag then ctx.Settings[config.Flag] = state end
 
 	local track = Create("Frame", {
 		Name = "Track",
@@ -804,7 +834,7 @@ local function CreateToggle(parent: Instance, config: ToggleConfig)
 		Position = state and UDim2.new(1, -20, 0.5, 0) or UDim2.new(0, 2, 0.5, 0),
 		AnchorPoint = Vector2.new(0, 0.5),
 		Size = UDim2.new(0, 18, 0, 18),
-		BackgroundColor3 = Color3.new(1, 1, 1),
+		BackgroundColor3 = Theme.KnobColor,
 		Parent = track,
 	})
 	AddCorner(knob, UDim.new(1, 0))
@@ -828,10 +858,11 @@ local function CreateToggle(parent: Instance, config: ToggleConfig)
 		Tween(track, { BackgroundColor3 = state and Theme.Secondary or Theme.Background })
 		Tween(trackStroke, { Color = state and Theme.Secondary or Theme.Border })
 		Tween(knob, { Position = state and UDim2.new(1, -20, 0.5, 0) or UDim2.new(0, 2, 0.5, 0) })
-		if config.Flag then UILibrary.Settings[config.Flag] = state end
+		if config.Flag then ctx.Settings[config.Flag] = state end
 	end
 
 	RegisterThemeRefresh(function()
+		knob.BackgroundColor3 = Theme.KnobColor
 		if state then
 			track.BackgroundColor3 = Theme.Secondary
 			trackStroke.Color = Theme.Secondary
@@ -851,18 +882,18 @@ local function CreateToggle(parent: Instance, config: ToggleConfig)
 
 	function api.AddKeybind(_self, subConfig: KeybindConfig)
 		rowObj.UpdateOffset(60)
-		ConstructKeybind(rowObj.InlineContainer, subConfig, true)
+		ConstructKeybind(ctx, rowObj.InlineContainer, subConfig, true)
 		return api
 	end
 	function api.AddColorPicker(_self, subConfig: ColorPickerConfig)
 		rowObj.UpdateOffset(36)
-		CreateColorPicker(rowObj.InlineContainer, subConfig, true)
+		CreateColorPicker(ctx, rowObj.InlineContainer, subConfig, true)
 		return api
 	end
 
-	if config.Flag then Registry[config.Flag] = api end
+	if config.Flag then ctx.Registry[config.Flag] = api end
 
-	TrackConnection(clickArea.MouseButton1Click:Connect(function()
+	TrackConnection(ctx, clickArea.MouseButton1Click:Connect(function()
 		state = not state
 		render()
 		if config.Callback then task.spawn(config.Callback, state) end
@@ -871,14 +902,14 @@ local function CreateToggle(parent: Instance, config: ToggleConfig)
 	return api
 end
 
-local function CreateSlider(parent: Instance, config: SliderConfig)
+local function CreateSlider(ctx: any, parent: Instance, config: SliderConfig)
 	local increment = config.Increment or 1
 	local value = math.clamp(config.Default or config.Min, config.Min, config.Max)
 
-	if config.Flag then UILibrary.Settings[config.Flag] = value end
+	if config.Flag then ctx.Settings[config.Flag] = value end
 
 	local rowHeight = config.Description and 88 or 64
-	local rowObj = BuildRow(parent, config.Title, config.Description, config.TextColor, 50)
+	local rowObj = BuildRow(ctx, parent, config.Title, config.Description, config.TextColor, 50)
 	local row = rowObj.Instance
 	row.Size = UDim2.new(1, 0, 0, rowHeight)
 
@@ -939,21 +970,22 @@ local function CreateSlider(parent: Instance, config: SliderConfig)
 	})
 	AddCorner(fill, UDim.new(1, 0))
 
-	RegisterThemeRefresh(function()
-		valueLabel.TextColor3 = Theme.TextSecondary
-		fill.BackgroundColor3 = Theme.Secondary
-	end)
-
 	local knob = Create("Frame", {
 		Name = "Knob",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.new(fillRatio, 0, 0.5, 0),
 		Size = UDim2.new(0, 20, 0, 20),
-		BackgroundColor3 = Color3.new(1, 1, 1),
+		BackgroundColor3 = Theme.KnobColor,
 		ZIndex = 3,
 		Parent = track,
 	})
 	AddCorner(knob, UDim.new(1, 0))
+
+	RegisterThemeRefresh(function()
+		valueLabel.TextColor3 = Theme.TextSecondary
+		fill.BackgroundColor3 = Theme.Secondary
+		knob.BackgroundColor3 = Theme.KnobColor
+	end)
 
 	local dragging = false
 
@@ -965,27 +997,29 @@ local function CreateSlider(parent: Instance, config: SliderConfig)
 		fill.Size = UDim2.new(newRatio, 0, 1, 0)
 		knob.Position = UDim2.new(newRatio, 0, 0.5, 0)
 		valueLabel.Text = tostring(value)
-		if config.Flag then UILibrary.Settings[config.Flag] = value end
+		if config.Flag then ctx.Settings[config.Flag] = value end
 	end
 
-	TrackConnection(trackArea.InputBegan:Connect(function(input: InputObject)
+	TrackConnection(ctx, trackArea.InputBegan:Connect(function(input: InputObject)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			dragging = true
+			GlobalIsDragging = true
 			setFromRatio((input.Position.X - track.AbsolutePosition.X) / track.AbsoluteSize.X)
 			if config.Callback then task.spawn(config.Callback, value) end
 		end
 	end))
 
-	TrackConnection(UserInputService.InputChanged:Connect(function(input: InputObject)
+	TrackConnection(ctx, UserInputService.InputChanged:Connect(function(input: InputObject)
 		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 			setFromRatio((input.Position.X - track.AbsolutePosition.X) / track.AbsoluteSize.X)
 			if config.Callback then task.spawn(config.Callback, value) end
 		end
 	end))
 
-	TrackConnection(UserInputService.InputEnded:Connect(function(input: InputObject)
+	TrackConnection(ctx, UserInputService.InputEnded:Connect(function(input: InputObject)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			dragging = false
+			GlobalIsDragging = false
 		end
 	end))
 
@@ -996,12 +1030,12 @@ local function CreateSlider(parent: Instance, config: SliderConfig)
 	end
 	function api.GetValue(_self) return value end
 
-	if config.Flag then Registry[config.Flag] = api end
+	if config.Flag then ctx.Registry[config.Flag] = api end
 	return api
 end
 
 local DefaultNoneLabels = { ["none"]=true, ["nothing"]=true, ["n/a"]=true, ["na"]=true, ["empty"]=true, ["-"]=true }
-local function CreateDropdown(parent: Instance, config: DropdownConfig)
+local function CreateDropdown(ctx: any, parent: Instance, config: DropdownConfig)
 	local isMulti = config.Multi or false
 	local selected: { [string]: boolean } = {}
 	if not isMulti then selected[config.Default or config.Options[1]] = true end
@@ -1025,7 +1059,7 @@ local function CreateDropdown(parent: Instance, config: DropdownConfig)
 	end
 	sanitizeSelection()
 
-	local rowObj = BuildRow(parent, config.Title, config.Description, config.TextColor, 175)
+	local rowObj = BuildRow(ctx, parent, config.Title, config.Description, config.TextColor, 175)
 	local row = rowObj.Instance
 	row.ClipsDescendants = false
 
@@ -1071,6 +1105,7 @@ local function CreateDropdown(parent: Instance, config: DropdownConfig)
 		BackgroundTransparency = 1,
 		Text = "",
 		AutoButtonColor = false,
+		Position = UDim2.new(0, 0, 0, 0),
 		Size = UDim2.new(1, 0, 1, 0),
 		ZIndex = 1000,
 		Visible = false,
@@ -1112,6 +1147,7 @@ local function CreateDropdown(parent: Instance, config: DropdownConfig)
 		BackgroundTransparency = 0.45,
 		AutoButtonColor = false,
 		Text = "",
+		Position = UDim2.new(0, 0, 0, 0),
 		Size = UDim2.new(1, 0, 1, 0),
 		ZIndex = 2000,
 		Visible = false,
@@ -1134,11 +1170,11 @@ local function CreateDropdown(parent: Instance, config: DropdownConfig)
 	AddStroke(expandPanel)
 
 	local expandHeader = Create("TextButton", { Name = "Header", Size = UDim2.new(1, 0, 0, 36), BackgroundTransparency = 1, Text = "", AutoButtonColor = false, ZIndex = 2002, Parent = expandPanel })
-	Create("TextLabel", { Name = "Title", Position = UDim2.new(0, 14, 0, 0), Size = UDim2.new(1, -50, 1, 0), BackgroundTransparency = 1, Font = Theme.FontBold, Text = config.Title, TextColor3 = Theme.TextPrimary, TextSize = 15, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 2002, Parent = expandHeader })
+	local expandTitle = Create("TextLabel", { Name = "Title", Position = UDim2.new(0, 14, 0, 0), Size = UDim2.new(1, -50, 1, 0), BackgroundTransparency = 1, Font = Theme.FontBold, Text = config.Title, TextColor3 = Theme.TextPrimary, TextSize = 15, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 2002, Parent = expandHeader })
 	local expandClose = Create("TextButton", { Name = "Close", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.new(0, 26, 0, 26), BackgroundColor3 = Theme.Background, Font = Theme.FontBold, Text = "×", TextColor3 = Theme.TextSecondary, TextSize = 16, AutoButtonColor = false, ZIndex = 2003, Parent = expandHeader })
 	AddCorner(expandClose, Theme.CornerRadiusSmall)
 
-	MakeDraggable(expandHeader, expandPanel)
+	MakeDraggable(ctx, expandHeader, expandPanel)
 
 	local expandSearch = Create("TextBox", {
 		Name = "Search",
@@ -1204,13 +1240,13 @@ local function CreateDropdown(parent: Instance, config: DropdownConfig)
 		if val then expandSearch.Text = "" end
 	end
 
-	TrackConnection(blocker.MouseButton1Click:Connect(function() setOpen(false) end))
-	TrackConnection(expandBackdrop.MouseButton1Click:Connect(function() setExpandOpen(false) end))
-	TrackConnection(expandClose.MouseButton1Click:Connect(function() setExpandOpen(false) end))
-	TrackConnection(expandButton.MouseButton1Click:Connect(function() setOpen(false) setExpandOpen(not expandOpen) end))
-	TrackConnection(display.MouseButton1Click:Connect(function() setExpandOpen(false) setOpen(not open) end))
+	TrackConnection(ctx, blocker.MouseButton1Click:Connect(function() setOpen(false) end))
+	TrackConnection(ctx, expandBackdrop.MouseButton1Click:Connect(function() setExpandOpen(false) end))
+	TrackConnection(ctx, expandClose.MouseButton1Click:Connect(function() setExpandOpen(false) end))
+	TrackConnection(ctx, expandButton.MouseButton1Click:Connect(function() setOpen(false) setExpandOpen(not expandOpen) end))
+	TrackConnection(ctx, display.MouseButton1Click:Connect(function() setExpandOpen(false) setOpen(not open) end))
 
-	TrackConnection(UserInputService.InputBegan:Connect(function(input, gpe)
+	TrackConnection(ctx, UserInputService.InputBegan:Connect(function(input, gpe)
 		if gpe then return end
 		if expandOpen and input.KeyCode == Enum.KeyCode.Escape then setExpandOpen(false) end
 	end))
@@ -1232,18 +1268,32 @@ local function CreateDropdown(parent: Instance, config: DropdownConfig)
 		if isMulti then
 			local names = {}
 			for n, s in pairs(selected) do if s then table.insert(names, n) end end
-			UILibrary.Settings[config.Flag] = names
+			ctx.Settings[config.Flag] = names
 		else
 			for n, s in pairs(selected) do
-				if s then UILibrary.Settings[config.Flag] = n break end
+				if s then ctx.Settings[config.Flag] = n break end
 			end
 		end
 	end
 
 	local optionButtons = {}
+
 	local function refreshHighlight()
 		display.BackgroundColor3 = Theme.Background; display.TextColor3 = Theme.TextPrimary
 		list.BackgroundColor3 = Theme.Elevated; expandPanel.BackgroundColor3 = Theme.Elevated
+
+		if expandTitle then expandTitle.TextColor3 = Theme.TextPrimary end
+		expandClose.BackgroundColor3 = Theme.Background
+		expandClose.TextColor3 = Theme.TextSecondary
+		expandSearch.BackgroundColor3 = Theme.Background
+		expandSearch.TextColor3 = Theme.TextPrimary
+		expandSearch.PlaceholderColor3 = Theme.TextMuted
+
+		local panelStroke = expandPanel:FindFirstChildWhichIsA("UIStroke")
+		if panelStroke then panelStroke.Color = Theme.Border end
+		local searchStroke = expandSearch:FindFirstChildWhichIsA("UIStroke")
+		if searchStroke then searchStroke.Color = Theme.Border end
+
 		for name, buttons in pairs(optionButtons) do
 			for _, btn in ipairs(buttons) do
 				btn.BackgroundColor3 = selected[name] and Theme.Secondary or Theme.Elevated
@@ -1285,16 +1335,16 @@ local function CreateDropdown(parent: Instance, config: DropdownConfig)
 		local btn1 = Create("TextButton", { Name = option, LayoutOrder = i, Size = UDim2.new(1, 0, 0, 26), BackgroundColor3 = Theme.Elevated, Font = Theme.Font, Text = option, TextColor3 = Theme.TextPrimary, TextSize = 13, ZIndex = 10, Parent = scroller })
 		AddCorner(btn1, Theme.CornerRadiusSmall)
 		table.insert(optionButtons[option], btn1)
-		TrackConnection(btn1.MouseButton1Click:Connect(function() selectOption(option) end))
+		TrackConnection(ctx, btn1.MouseButton1Click:Connect(function() selectOption(option) end))
 
 		local btn2 = Create("TextButton", { Name = option, LayoutOrder = i, Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = Theme.Elevated, Font = Theme.Font, Text = option, TextColor3 = Theme.TextPrimary, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 2002, Parent = expandScroller })
 		AddCorner(btn2, Theme.CornerRadiusSmall)
 		AddPadding(btn2, 8)
 		table.insert(optionButtons[option], btn2)
-		TrackConnection(btn2.MouseButton1Click:Connect(function() selectOption(option) end))
+		TrackConnection(ctx, btn2.MouseButton1Click:Connect(function() selectOption(option) end))
 	end
 
-	TrackConnection(expandSearch:GetPropertyChangedSignal("Text"):Connect(function()
+	TrackConnection(ctx, expandSearch:GetPropertyChangedSignal("Text"):Connect(function()
 		local q = expandSearch.Text:lower()
 		for _, opt in ipairs(config.Options) do
 			local matches = q == "" or opt:lower():find(q, 1, true) ~= nil
@@ -1337,20 +1387,16 @@ local function CreateDropdown(parent: Instance, config: DropdownConfig)
 
 	function api.AddKeybind(_self, subConfig: KeybindConfig)
 		rowObj.UpdateOffset(60)
-		ConstructKeybind(rowObj.InlineContainer, subConfig, true)
+		ConstructKeybind(ctx, rowObj.InlineContainer, subConfig, true)
 		return api
 	end
 
-	if config.Flag then Registry[config.Flag] = api end
+	if config.Flag then ctx.Registry[config.Flag] = api end
 	return api
 end
 
-local function CreateMultiDropdown(parent: Instance, config: MultiDropdownConfig)
-	if config.Default then
-		local seed = {}
-		for _, name in ipairs(config.Default) do seed[name] = true end
-	end
-	local api = CreateDropdown(parent, {
+local function CreateMultiDropdown(ctx: any, parent: Instance, config: MultiDropdownConfig)
+	local api = CreateDropdown(ctx, parent, {
 		Title = config.Title, Description = config.Description, TextColor = config.TextColor, Options = config.Options,
 		Multi = true, Flag = config.Flag, NoneOptions = config.NoneOptions, Callback = config.Callback, ExpandColumns = config.ExpandColumns,
 	} :: DropdownConfig)
@@ -1358,8 +1404,8 @@ local function CreateMultiDropdown(parent: Instance, config: MultiDropdownConfig
 	return api
 end
 
-local function CreateLabel(parent: Instance, config: LabelConfig)
-	local rowObj = BuildRow(parent, config.Title, config.Description, config.TextColor, 10)
+local function CreateLabel(ctx: any, parent: Instance, config: LabelConfig)
+	local rowObj = BuildRow(ctx, parent, config.Title, config.Description, config.TextColor, 10)
 	local row = rowObj.Instance
 	row.BackgroundTransparency = 1
 	local api = {}
@@ -1367,10 +1413,10 @@ local function CreateLabel(parent: Instance, config: LabelConfig)
 	return api
 end
 
-local function CreateInput(parent: Instance, config: InputConfig)
-	local rowObj = BuildRow(parent, config.Title, config.Description, config.TextColor, 74)
+local function CreateInput(ctx: any, parent: Instance, config: InputConfig)
+	local rowObj = BuildRow(ctx, parent, config.Title, config.Description, config.TextColor, 74)
 	local value = config.Default or 0
-	if config.Flag then UILibrary.Settings[config.Flag] = value end
+	if config.Flag then ctx.Settings[config.Flag] = value end
 
 	local box = Create("TextBox", {
 		Name = "Input",
@@ -1405,11 +1451,11 @@ local function CreateInput(parent: Instance, config: InputConfig)
 		if config.Max then num = math.min(num, config.Max) end
 		value = num
 		box.Text = tostring(value)
-		if config.Flag then UILibrary.Settings[config.Flag] = value end
+		if config.Flag then ctx.Settings[config.Flag] = value end
 		if config.Callback then task.spawn(config.Callback, value) end
 	end
 
-	TrackConnection(box.FocusLost:Connect(function() commit() end))
+	TrackConnection(ctx, box.FocusLost:Connect(function() commit() end))
 
 	local api = {}
 	function api.SetValue(_self, newValue: number) box.Text = tostring(newValue); commit() end
@@ -1417,18 +1463,18 @@ local function CreateInput(parent: Instance, config: InputConfig)
 
 	function api.AddKeybind(_self, subConfig: KeybindConfig)
 		rowObj.UpdateOffset(60)
-		ConstructKeybind(rowObj.InlineContainer, subConfig, true)
+		ConstructKeybind(ctx, rowObj.InlineContainer, subConfig, true)
 		return api
 	end
 
-	if config.Flag then Registry[config.Flag] = api end
+	if config.Flag then ctx.Registry[config.Flag] = api end
 	return api
 end
 
-local function CreateStringInput(parent: Instance, config: StringInputConfig)
-	local rowObj = BuildRow(parent, config.Title, config.Description, config.TextColor, 190)
+local function CreateStringInput(ctx: any, parent: Instance, config: StringInputConfig)
+	local rowObj = BuildRow(ctx, parent, config.Title, config.Description, config.TextColor, 190)
 	local value = config.Default or ""
-	if config.Flag then UILibrary.Settings[config.Flag] = value end
+	if config.Flag then ctx.Settings[config.Flag] = value end
 
 	local box = Create("TextBox", {
 		Name = "StringInput",
@@ -1461,17 +1507,17 @@ local function CreateStringInput(parent: Instance, config: StringInputConfig)
 
 	local overlay = GetOverlay(rowObj.Instance)
 
-	local expandBackdrop = Create("TextButton", { Name = "ExpandBackdrop", BackgroundColor3 = Color3.fromRGB(0, 0, 0), BackgroundTransparency = 0.45, AutoButtonColor = false, Text = "", Size = UDim2.new(1, 0, 1, 0), ZIndex = 2000, Visible = false, Parent = overlay })
+	local expandBackdrop = Create("TextButton", { Name = "ExpandBackdrop", BackgroundColor3 = Color3.fromRGB(0, 0, 0), BackgroundTransparency = 0.45, AutoButtonColor = false, Text = "", Position = UDim2.new(0,0,0,0), Size = UDim2.new(1, 0, 1, 0), ZIndex = 2000, Visible = false, Parent = overlay })
 	local expandPanel = Create("TextButton", { Name = "ExpandPanel", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 0), Size = UDim2.new(0, 360, 0, 320), BackgroundColor3 = Theme.Elevated, Text = "", AutoButtonColor = false, ZIndex = 2001, Visible = false, Parent = overlay })
 	AddCorner(expandPanel, Theme.CornerRadiusCard)
 	AddStroke(expandPanel)
 
 	local expandHeader = Create("TextButton", { Name = "Header", Size = UDim2.new(1, 0, 0, 36), BackgroundTransparency = 1, Text = "", AutoButtonColor = false, ZIndex = 2002, Parent = expandPanel })
-	Create("TextLabel", { Name = "Title", Position = UDim2.new(0, 14, 0, 0), Size = UDim2.new(1, -50, 1, 0), BackgroundTransparency = 1, Font = Theme.FontBold, Text = config.Title, TextColor3 = Theme.TextPrimary, TextSize = 15, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 2002, Parent = expandHeader })
+	local expandTitle = Create("TextLabel", { Name = "Title", Position = UDim2.new(0, 14, 0, 0), Size = UDim2.new(1, -50, 1, 0), BackgroundTransparency = 1, Font = Theme.FontBold, Text = config.Title, TextColor3 = Theme.TextPrimary, TextSize = 15, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 2002, Parent = expandHeader })
 	local expandClose = Create("TextButton", { Name = "Close", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.new(0, 26, 0, 26), BackgroundColor3 = Theme.Background, Font = Theme.FontBold, Text = "×", TextColor3 = Theme.TextSecondary, TextSize = 16, AutoButtonColor = false, ZIndex = 2003, Parent = expandHeader })
 	AddCorner(expandClose, Theme.CornerRadiusSmall)
 
-	MakeDraggable(expandHeader, expandPanel)
+	MakeDraggable(ctx, expandHeader, expandPanel)
 
 	local expandBox = Create("TextBox", {
 		Name = "LargeInput", Position = UDim2.new(0, 14, 0, 44), Size = UDim2.new(1, -28, 1, -58),
@@ -1483,52 +1529,74 @@ local function CreateStringInput(parent: Instance, config: StringInputConfig)
 	AddPadding(expandBox, 8)
 
 	local function setExpandOpen(val: boolean) expandBackdrop.Visible = val; expandPanel.Visible = val end
-	TrackConnection(expandButton.MouseButton1Click:Connect(function() setExpandOpen(true) end))
-	TrackConnection(expandClose.MouseButton1Click:Connect(function() setExpandOpen(false) end))
-	TrackConnection(expandBackdrop.MouseButton1Click:Connect(function() setExpandOpen(false) end))
+	TrackConnection(ctx, expandButton.MouseButton1Click:Connect(function() setExpandOpen(true) end))
+	TrackConnection(ctx, expandClose.MouseButton1Click:Connect(function() setExpandOpen(false) end))
+	TrackConnection(ctx, expandBackdrop.MouseButton1Click:Connect(function() setExpandOpen(false) end))
 
 	local isSyncing = false
-	TrackConnection(box:GetPropertyChangedSignal("Text"):Connect(function()
+	TrackConnection(ctx, box:GetPropertyChangedSignal("Text"):Connect(function()
 		if isSyncing then return end
-		isSyncing = true; value = box.Text; expandBox.Text = value; if config.Flag then UILibrary.Settings[config.Flag] = value end; isSyncing = false
+		isSyncing = true; value = box.Text; expandBox.Text = value; if config.Flag then ctx.Settings[config.Flag] = value end; isSyncing = false
 	end))
-	TrackConnection(expandBox:GetPropertyChangedSignal("Text"):Connect(function()
+	TrackConnection(ctx, expandBox:GetPropertyChangedSignal("Text"):Connect(function()
 		if isSyncing then return end
-		isSyncing = true; value = expandBox.Text; box.Text = value; if config.Flag then UILibrary.Settings[config.Flag] = value end; isSyncing = false
+		isSyncing = true; value = expandBox.Text; box.Text = value; if config.Flag then ctx.Settings[config.Flag] = value end; isSyncing = false
 	end))
 
 	local function commit()
 		value = box.Text
-		if config.Flag then UILibrary.Settings[config.Flag] = value end
+		if config.Flag then ctx.Settings[config.Flag] = value end
 		if config.Callback then task.spawn(config.Callback, value) end
 	end
-	TrackConnection(box.FocusLost:Connect(commit))
-	TrackConnection(expandBox.FocusLost:Connect(commit))
+	TrackConnection(ctx, box.FocusLost:Connect(commit))
+	TrackConnection(ctx, expandBox.FocusLost:Connect(commit))
+
+	RegisterThemeRefresh(function()
+		box.BackgroundColor3 = Theme.Background
+		box.TextColor3 = Theme.TextPrimary
+		box.PlaceholderColor3 = Theme.TextMuted
+		local boxStroke = box:FindFirstChildWhichIsA("UIStroke")
+		if boxStroke then boxStroke.Color = Theme.Border end
+
+		expandPanel.BackgroundColor3 = Theme.Elevated
+		local panelStroke = expandPanel:FindFirstChildWhichIsA("UIStroke")
+		if panelStroke then panelStroke.Color = Theme.Border end
+
+		if expandTitle then expandTitle.TextColor3 = Theme.TextPrimary end
+		expandClose.BackgroundColor3 = Theme.Background
+		expandClose.TextColor3 = Theme.TextSecondary
+
+		expandBox.BackgroundColor3 = Theme.Background
+		expandBox.TextColor3 = Theme.TextPrimary
+		expandBox.PlaceholderColor3 = Theme.TextMuted
+		local expandBoxStroke = expandBox:FindFirstChildWhichIsA("UIStroke")
+		if expandBoxStroke then expandBoxStroke.Color = Theme.Border end
+	end)
 
 	local api = {}
 	function api.SetValue(_self, newValue: string) box.Text = newValue; commit() end
 	function api.GetValue(_self) return value end
 	function api.AddKeybind(_self, subConfig: KeybindConfig)
 		rowObj.UpdateOffset(60)
-		ConstructKeybind(rowObj.InlineContainer, subConfig, true)
+		ConstructKeybind(ctx, rowObj.InlineContainer, subConfig, true)
 		return api
 	end
-	if config.Flag then Registry[config.Flag] = api end
+	if config.Flag then ctx.Registry[config.Flag] = api end
 	return api
 end
 
-CreateColorPicker = function(parent: Instance, config: ColorPickerConfig, isInline: boolean?)
+CreateColorPicker = function(ctx: any, parent: Instance, config: ColorPickerConfig, isInline: boolean?)
 	local rowObj, swatchParent, offsetAmt
 	local currentColor = config.Default or Color3.fromRGB(255, 0, 0)
 	local h, s, v = currentColor:ToHSV()
 
-	if config.Flag then UILibrary.Settings[config.Flag] = currentColor end
+	if config.Flag then ctx.Settings[config.Flag] = currentColor end
 
 	if isInline then
 		swatchParent = parent
 		offsetAmt = 36
 	else
-		rowObj = BuildRow(parent, config.Title, config.Description, config.TextColor, 55)
+		rowObj = BuildRow(ctx, parent, config.Title, config.Description, config.TextColor, 55)
 		swatchParent = rowObj.Instance
 		offsetAmt = 48
 	end
@@ -1548,7 +1616,7 @@ CreateColorPicker = function(parent: Instance, config: ColorPickerConfig, isInli
 	AddStroke(swatch)
 
 	local overlay = GetOverlay(swatch)
-	local blocker = Create("TextButton", { Name = "Blocker", BackgroundTransparency = 1, Text = "", AutoButtonColor = false, Size = UDim2.new(1, 0, 1, 0), ZIndex = 1000, Visible = false, Parent = overlay })
+	local blocker = Create("TextButton", { Name = "Blocker", BackgroundTransparency = 1, Text = "", AutoButtonColor = false, Position = UDim2.new(0,0,0,0), Size = UDim2.new(1, 0, 1, 0), ZIndex = 1000, Visible = false, Parent = overlay })
 	local popup = Create("Frame", { Name = "Popup", Size = UDim2.new(0, 196, 0, 168), BackgroundColor3 = Theme.Elevated, Visible = false, ZIndex = 1001, Parent = overlay })
 	AddCorner(popup, Theme.CornerRadiusCard)
 	AddStroke(popup)
@@ -1574,7 +1642,7 @@ CreateColorPicker = function(parent: Instance, config: ColorPickerConfig, isInli
 	local function updateColor()
 		currentColor = Color3.fromHSV(h, s, v); swatch.BackgroundColor3 = currentColor; svSquare.BackgroundColor3 = Color3.fromHSV(h, 1, 1)
 		svCursor.Position = UDim2.new(s, 0, 1 - v, 0); hueCursor.Position = UDim2.new(0.5, 0, h, 0)
-		if config.Flag then UILibrary.Settings[config.Flag] = currentColor end
+		if config.Flag then ctx.Settings[config.Flag] = currentColor end
 		if config.Callback then task.spawn(config.Callback, currentColor) end
 	end
 
@@ -1585,26 +1653,26 @@ CreateColorPicker = function(parent: Instance, config: ColorPickerConfig, isInli
 		popup.Visible = val; blocker.Visible = val
 	end
 
-	TrackConnection(swatch.MouseButton1Click:Connect(function() setOpen(not popup.Visible) end))
-	TrackConnection(blocker.MouseButton1Click:Connect(function() setOpen(false) end))
+	TrackConnection(ctx, swatch.MouseButton1Click:Connect(function() setOpen(not popup.Visible) end))
+	TrackConnection(ctx, blocker.MouseButton1Click:Connect(function() setOpen(false) end))
 
-	TrackConnection(svHitArea.InputBegan:Connect(function(input)
+	TrackConnection(ctx, svHitArea.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			draggingSV = true; s = math.clamp((input.Position.X - svSquare.AbsolutePosition.X) / svSquare.AbsoluteSize.X, 0, 1)
 			v = 1 - math.clamp((input.Position.Y - svSquare.AbsolutePosition.Y) / svSquare.AbsoluteSize.Y, 0, 1); updateColor()
 		end
 	end))
-	TrackConnection(hueStrip.InputBegan:Connect(function(input)
+	TrackConnection(ctx, hueStrip.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			draggingHue = true; h = math.clamp((input.Position.Y - hueStrip.AbsolutePosition.Y) / hueStrip.AbsoluteSize.Y, 0, 1); updateColor()
 		end
 	end))
-	TrackConnection(UserInputService.InputChanged:Connect(function(input)
+	TrackConnection(ctx, UserInputService.InputChanged:Connect(function(input)
 		if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then return end
 		if draggingSV then s = math.clamp((input.Position.X - svSquare.AbsolutePosition.X) / svSquare.AbsoluteSize.X, 0, 1); v = 1 - math.clamp((input.Position.Y - svSquare.AbsolutePosition.Y) / svSquare.AbsoluteSize.Y, 0, 1); updateColor()
 		elseif draggingHue then h = math.clamp((input.Position.Y - hueStrip.AbsolutePosition.Y) / hueStrip.AbsoluteSize.Y, 0, 1); updateColor() end
 	end))
-	TrackConnection(UserInputService.InputEnded:Connect(function(input)
+	TrackConnection(ctx, UserInputService.InputEnded:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then draggingSV, draggingHue = false, false end
 	end))
 
@@ -1612,18 +1680,279 @@ CreateColorPicker = function(parent: Instance, config: ColorPickerConfig, isInli
 	function api.SetValue(_self, color: Color3) h, s, v = color:ToHSV(); updateColor(); if config.Callback then task.spawn(config.Callback, currentColor) end end
 	function api.GetValue(_self) return currentColor end
 
-	if config.Flag then Registry[config.Flag] = api end
+	if config.Flag then ctx.Registry[config.Flag] = api end
 	return api
 end
 
+local function CreatePriorityList(ctx: any, parent: Instance, config: PriorityListConfig)
+	local rowObj = BuildRow(ctx, parent, config.Title, config.Description, config.TextColor, 140)
+	local row = rowObj.Instance
+	local items = {}
+	for _, v in ipairs(config.Items) do table.insert(items, v) end
+
+	if config.Flag then ctx.Settings[config.Flag] = items end
+
+	local displayBtn = Create("TextButton", {
+		Name = "Display", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0),
+		Size = UDim2.new(0, 140, 0, 26), BackgroundColor3 = Theme.Background, Font = Theme.Font,
+		Text = "Edit Priorities", TextColor3 = Theme.TextPrimary, TextSize = 13,
+		AutoButtonColor = false, ZIndex = 11, Parent = row,
+	})
+	AddCorner(displayBtn, Theme.CornerRadiusSmall)
+	AddStroke(displayBtn)
+
+	local overlay = GetOverlay(row)
+
+	local expandBackdrop = Create("TextButton", {
+		Name = "ExpandBackdrop", BackgroundColor3 = Color3.fromRGB(0, 0, 0), BackgroundTransparency = 0.45,
+		AutoButtonColor = false, Text = "", Position = UDim2.new(0, 0, 0, 0), Size = UDim2.new(1, 0, 1, 0), ZIndex = 2000, Visible = false, Parent = overlay
+	})
+
+	local expandPanel = Create("TextButton", {
+		Name = "PriorityPanel", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 0),
+		Size = UDim2.new(0, 360, 0, 380), BackgroundColor3 = Theme.Elevated, Text = "", AutoButtonColor = false,
+		ZIndex = 2001, Visible = false, Parent = overlay
+	})
+	AddCorner(expandPanel, Theme.CornerRadiusCard)
+	AddStroke(expandPanel)
+
+	local expandHeader = Create("TextButton", { Name = "Header", Size = UDim2.new(1, 0, 0, 36), BackgroundTransparency = 1, Text = "", AutoButtonColor = false, ZIndex = 2002, Parent = expandPanel })
+	local expandTitle = Create("TextLabel", { Name = "Title", Position = UDim2.new(0, 14, 0, 0), Size = UDim2.new(1, -50, 1, 0), BackgroundTransparency = 1, Font = Theme.FontBold, Text = config.Title, TextColor3 = Theme.TextPrimary, TextSize = 15, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 2002, Parent = expandHeader })
+	local expandClose = Create("TextButton", { Name = "Close", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.new(0, 26, 0, 26), BackgroundColor3 = Theme.Background, Font = Theme.FontBold, Text = "×", TextColor3 = Theme.TextSecondary, TextSize = 16, AutoButtonColor = false, ZIndex = 2003, Parent = expandHeader })
+	AddCorner(expandClose, Theme.CornerRadiusSmall)
+
+	MakeDraggable(ctx, expandHeader, expandPanel)
+
+	local scroller = Create("ScrollingFrame", {
+		Name = "Scroller", Position = UDim2.new(0, 14, 0, 44), Size = UDim2.new(1, -28, 1, -58),
+		BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 3, ScrollingDirection = Enum.ScrollingDirection.Y,
+		AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(0, 0, 0, 0), ZIndex = 2002, Parent = expandPanel,
+	})
+	Create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 6), Parent = scroller })
+
+	local activeRows = {}
+
+	RegisterThemeRefresh(function()
+		displayBtn.BackgroundColor3 = Theme.Background
+		displayBtn.TextColor3 = Theme.TextPrimary
+		local displayStroke = displayBtn:FindFirstChildWhichIsA("UIStroke")
+		if displayStroke then displayStroke.Color = Theme.Border end
+
+		expandPanel.BackgroundColor3 = Theme.Elevated
+		local panelStroke = expandPanel:FindFirstChildWhichIsA("UIStroke")
+		if panelStroke then panelStroke.Color = Theme.Border end
+
+		expandTitle.TextColor3 = Theme.TextPrimary
+		expandClose.BackgroundColor3 = Theme.Background
+		expandClose.TextColor3 = Theme.TextSecondary
+
+		for _, rowData in ipairs(activeRows) do
+			if not rowData.Frame or not rowData.Frame.Parent then continue end
+			rowData.Frame.BackgroundColor3 = Theme.Background
+			local rowStroke = rowData.Frame:FindFirstChildWhichIsA("UIStroke")
+			if rowStroke then rowStroke.Color = Theme.Border end
+
+			rowData.RankLabel.TextColor3 = Theme.Accent
+			rowData.NameLabel.TextColor3 = Theme.TextPrimary
+
+			local btns = rowData.Frame:FindFirstChild("Btns")
+			if btns then
+				for _, btn in ipairs(btns:GetChildren()) do
+					if btn:IsA("TextButton") then
+						btn.BackgroundColor3 = Theme.Elevated
+						btn.TextColor3 = Theme.TextPrimary
+					end
+				end
+			end
+		end
+	end)
+
+	local function triggerCallback()
+		if config.Flag then ctx.Settings[config.Flag] = items end
+		if config.Callback then task.spawn(config.Callback, items) end
+	end
+
+	local isDragging = false
+	local dragData = nil
+	local ghostFrame = nil
+	local dragOffset = Vector2.new()
+
+	local function getRowByOrder(order)
+		for _, r in ipairs(activeRows) do
+			if r.LayoutOrder == order then return r end
+		end
+		return nil
+	end
+
+	local renderItems
+
+	TrackConnection(ctx, UserInputService.InputChanged:Connect(function(input)
+		if isDragging and dragData and ghostFrame then
+			if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+				local mousePos = UserInputService:GetMouseLocation()
+				ghostFrame.Position = UDim2.fromOffset(mousePos.X - dragOffset.X, mousePos.Y - dragOffset.Y)
+
+				if #items == 0 or not scroller.Parent then return end
+
+				local localY = input.Position.Y - scroller.AbsolutePosition.Y + scroller.CanvasPosition.Y
+				local targetOrder = math.clamp(math.floor(localY / 38) + 1, 1, #items)
+
+				if targetOrder ~= dragData.LayoutOrder then
+					local targetRow = getRowByOrder(targetOrder)
+					if targetRow then
+						local oldOrder = dragData.LayoutOrder
+
+						targetRow.LayoutOrder = oldOrder
+						targetRow.Frame.LayoutOrder = oldOrder
+						targetRow.RankLabel.Text = "#" .. oldOrder
+
+						dragData.LayoutOrder = targetOrder
+						dragData.Frame.LayoutOrder = targetOrder
+						dragData.RankLabel.Text = "#" .. targetOrder
+					end
+				end
+			end
+		end
+	end))
+
+	TrackConnection(ctx, UserInputService.InputEnded:Connect(function(input)
+		if isDragging and dragData then
+			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+				isDragging = false
+				GlobalIsDragging = false
+
+				if ghostFrame then 
+					ghostFrame:Destroy() 
+					ghostFrame = nil 
+				end
+
+				local newItems = {}
+				local changed = false
+				for i = 1, #items do
+					local r = getRowByOrder(i)
+					if r then 
+						table.insert(newItems, r.Name) 
+						if r.Name ~= items[i] then changed = true end
+					else
+						table.insert(newItems, items[i])
+					end
+				end
+
+				items = newItems
+				dragData = nil
+
+				if changed then triggerCallback() end
+				renderItems()
+			end
+		end
+	end))
+
+	renderItems = function()
+		for _, child in ipairs(scroller:GetChildren()) do
+			if child:IsA("Frame") then child:Destroy() end
+		end
+		table.clear(activeRows)
+
+		for i, itemName in ipairs(items) do
+			local itemRow = Create("Frame", { Name = "Item_" .. i, Size = UDim2.new(1, -6, 0, 32), BackgroundColor3 = Theme.Background, ZIndex = 2003, Parent = scroller, LayoutOrder = i })
+			AddCorner(itemRow, Theme.CornerRadiusSmall)
+			AddStroke(itemRow, Theme.Border, 1)
+
+			local rankLabel = Create("TextLabel", { Name = "Rank", Size = UDim2.new(0, 32, 1, 0), BackgroundTransparency = 1, Font = Theme.FontBold, Text = "#" .. i, TextColor3 = Theme.Accent, TextSize = 14, ZIndex = 2004, Parent = itemRow })
+			local nameLabel = Create("TextLabel", { Name = "Name", Position = UDim2.new(0, 36, 0, 0), Size = UDim2.new(1, -100, 1, 0), BackgroundTransparency = 1, Font = Theme.Font, Text = itemName, TextColor3 = Theme.TextPrimary, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 2004, Parent = itemRow })
+
+			local rowInfo = {
+				Frame = itemRow,
+				RankLabel = rankLabel,
+				NameLabel = nameLabel,
+				Name = itemName,
+				LayoutOrder = i
+			}
+			table.insert(activeRows, rowInfo)
+
+			local btnContainer = Create("Frame", { Name = "Btns", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -4, 0.5, 0), Size = UDim2.new(0, 56, 1, -8), BackgroundTransparency = 1, ZIndex = 2004, Parent = itemRow })
+			Create("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 4), HorizontalAlignment = Enum.HorizontalAlignment.Right, Parent = btnContainer })
+
+			if i > 1 then
+				local upBtn = Create("TextButton", { Name = "Up", Size = UDim2.new(0, 26, 0, 24), BackgroundColor3 = Theme.Elevated, Font = Theme.FontBold, Text = "▲", TextColor3 = Theme.TextPrimary, TextSize = 10, AutoButtonColor = false, ZIndex = 2005, Parent = btnContainer })
+				AddCorner(upBtn, Theme.CornerRadiusSmall)
+				TrackConnection(ctx, upBtn.MouseButton1Click:Connect(function() items[i], items[i-1] = items[i-1], items[i]; renderItems(); triggerCallback() end))
+			end
+
+			if i < #items then
+				local downBtn = Create("TextButton", { Name = "Down", Size = UDim2.new(0, 26, 0, 24), BackgroundColor3 = Theme.Elevated, Font = Theme.FontBold, Text = "▼", TextColor3 = Theme.TextPrimary, TextSize = 10, AutoButtonColor = false, ZIndex = 2005, Parent = btnContainer })
+				AddCorner(downBtn, Theme.CornerRadiusSmall)
+				TrackConnection(ctx, downBtn.MouseButton1Click:Connect(function() items[i], items[i+1] = items[i+1], items[i]; renderItems(); triggerCallback() end))
+			end
+
+			local dragArea = Create("TextButton", { Name = "DragArea", Size = UDim2.new(1, -60, 1, 0), BackgroundTransparency = 1, Text = "", ZIndex = 2006, Parent = itemRow })
+
+			TrackConnection(ctx, dragArea.InputBegan:Connect(function(input)
+				if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+					isDragging = true
+					GlobalIsDragging = true
+					dragData = rowInfo
+
+					local mousePos = UserInputService:GetMouseLocation()
+					
+					dragOffset = Vector2.new(itemRow.AbsoluteSize.X / 2, itemRow.AbsoluteSize.Y / 2)
+
+					ghostFrame = itemRow:Clone()
+					ghostFrame.Name = "GhostRow"
+					ghostFrame.Parent = overlay
+					ghostFrame.Size = UDim2.new(0, itemRow.AbsoluteSize.X, 0, itemRow.AbsoluteSize.Y)
+					ghostFrame.Position = UDim2.fromOffset(mousePos.X - dragOffset.X, mousePos.Y - dragOffset.Y)
+
+					local function elevateZIndex(inst)
+						if inst:IsA("GuiObject") then inst.ZIndex = inst.ZIndex + 3000 end
+						for _, c in ipairs(inst:GetChildren()) do elevateZIndex(c) end
+					end
+					elevateZIndex(ghostFrame)
+
+					ghostFrame.Active = false
+
+					itemRow.BackgroundTransparency = 0.6
+					rankLabel.TextTransparency = 0.6
+					nameLabel.TextTransparency = 0.6
+					for _, c in ipairs(btnContainer:GetChildren()) do
+						if c:IsA("TextButton") then c.BackgroundTransparency = 0.6 c.TextTransparency = 0.6 end
+					end
+				end
+			end))
+		end
+	end
+
+	local function setExpandOpen(val: boolean)
+		expandBackdrop.Visible = val; expandPanel.Visible = val
+		if val then renderItems() end
+	end
+
+	TrackConnection(ctx, displayBtn.MouseButton1Click:Connect(function() setExpandOpen(true) end))
+	TrackConnection(ctx, expandClose.MouseButton1Click:Connect(function() setExpandOpen(false) end))
+	TrackConnection(ctx, expandBackdrop.MouseButton1Click:Connect(function() setExpandOpen(false) end))
+
+	local api = {}
+	function api.SetValue(_self, newItems: { string })
+		if type(newItems) == "table" then
+			items = {}; for _, v in ipairs(newItems) do table.insert(items, v) end
+			if expandPanel.Visible then renderItems() end
+			triggerCallback()
+		end
+	end
+	function api.GetValue(_self) return items end
+
+	if config.Flag then ctx.Registry[config.Flag] = api end
+	return api
+end
 
 -- ---------- Section ----------
 
 local Section = {}
 Section.__index = Section
 
-function Section.new(parent: Instance, title: string, textColor: Color3?, columns: number?, rowHeight: number?)
+function Section.new(ctx: any, parent: Instance, title: string, textColor: Color3?, columns: number?, rowHeight: number?)
 	local self = setmetatable({}, Section)
+	self._ctx = ctx
 
 	local container = Create("Frame", {
 		Name = "Section_" .. title,
@@ -1670,7 +1999,7 @@ function Section.new(parent: Instance, title: string, textColor: Color3?, column
 
 	RegisterThemeRefresh(function() header.TextColor3 = textColor or Theme.TextMuted end)
 
-	table.insert(SectionsData, { Container = container, List = list })
+	table.insert(ctx.SectionsData, { Container = container, List = list, TitleLower = title:lower() })
 
 	self._container = container
 	self._list = list
@@ -1678,6 +2007,8 @@ function Section.new(parent: Instance, title: string, textColor: Color3?, column
 end
 
 function Section:CreateExpandableGroup(title: string, defaultExpanded: boolean?, columns: number?, rowHeight: number?)
+	local ctx = self._ctx
+
 	local container = Create("Frame", {
 		Name = "Expandable_" .. title,
 		Size = UDim2.new(1, 0, 0, 36),
@@ -1751,7 +2082,7 @@ function Section:CreateExpandableGroup(title: string, defaultExpanded: boolean?,
 	end
 
 	local expanded = defaultExpanded or false
-	TrackConnection(headerBtn.MouseButton1Click:Connect(function()
+	TrackConnection(ctx, headerBtn.MouseButton1Click:Connect(function()
 		expanded = not expanded
 		contentLayout.Visible = expanded
 		arrow.Text = expanded and "-" or "+"
@@ -1764,46 +2095,67 @@ function Section:CreateExpandableGroup(title: string, defaultExpanded: boolean?,
 		arrow.TextColor3 = Theme.TextSecondary
 	end)
 
+	table.insert(ctx.ExpandableGroups, {
+		Container = container,
+		Content = contentLayout,
+		Arrow = arrow,
+		TitleLower = title:lower(),
+		GetExpanded = function() return expanded end,
+	})
+
 	local expandableObj = setmetatable({}, Section)
 	expandableObj._container = container
 	expandableObj._list = contentLayout
+	expandableObj._ctx = ctx
 	return expandableObj
 end
 
-function Section:CreateButton(config: ButtonConfig) return CreateButton(self._list, config) end
-function Section:CreateToggle(config: ToggleConfig) return CreateToggle(self._list, config) end
-function Section:CreateSlider(config: SliderConfig) return CreateSlider(self._list, config) end
-function Section:CreateDropdown(config: DropdownConfig) return CreateDropdown(self._list, config) end
-function Section:CreateMultiDropdown(config: MultiDropdownConfig) return CreateMultiDropdown(self._list, config) end
-function Section:CreateLabel(config: LabelConfig) return CreateLabel(self._list, config) end
-function Section:CreateInput(config: InputConfig) return CreateInput(self._list, config) end
-function Section:CreateStringInput(config: StringInputConfig) return CreateStringInput(self._list, config) end
-function Section:CreateColorPicker(config: ColorPickerConfig) return CreateColorPicker(self._list, config) end
-function Section:CreateKeybind(config: KeybindConfig) return CreateKeybind(self._list, config) end
+function Section:CreateButton(config: ButtonConfig) return CreateButton(self._ctx, self._list, config) end
+function Section:CreateToggle(config: ToggleConfig) return CreateToggle(self._ctx, self._list, config) end
+function Section:CreateSlider(config: SliderConfig) return CreateSlider(self._ctx, self._list, config) end
+function Section:CreateDropdown(config: DropdownConfig) return CreateDropdown(self._ctx, self._list, config) end
+function Section:CreateMultiDropdown(config: MultiDropdownConfig) return CreateMultiDropdown(self._ctx, self._list, config) end
+function Section:CreateLabel(config: LabelConfig) return CreateLabel(self._ctx, self._list, config) end
+function Section:CreateInput(config: InputConfig) return CreateInput(self._ctx, self._list, config) end
+function Section:CreateStringInput(config: StringInputConfig) return CreateStringInput(self._ctx, self._list, config) end
+function Section:CreateColorPicker(config: ColorPickerConfig) return CreateColorPicker(self._ctx, self._list, config) end
+function Section:CreateKeybind(config: KeybindConfig) return CreateKeybind(self._ctx, self._list, config) end
+function Section:CreatePriorityList(config: PriorityListConfig) return CreatePriorityList(self._ctx, self._list, config) end
 
 -- ---------- Tab ----------
 
 local Tab = {}
 Tab.__index = Tab
 
-function Tab.new(pageContainer: ScrollingFrame, tabButton: TextButton)
+function Tab.new(ctx: any, pageContainer: ScrollingFrame, tabButton: TextButton)
 	local self = setmetatable({}, Tab)
+	self._ctx = ctx
 	self._page = pageContainer
 	self._button = tabButton
 	return self
 end
 
-function Tab:CreateSection(title: string, textColor: Color3?, columns: number?, rowHeight: number?) return Section.new(self._page, title, textColor, columns, rowHeight) end
-function Tab:CreateButton(config: ButtonConfig) return CreateButton(self._page, config) end
-function Tab:CreateToggle(config: ToggleConfig) return CreateToggle(self._page, config) end
-function Tab:CreateSlider(config: SliderConfig) return CreateSlider(self._page, config) end
-function Tab:CreateDropdown(config: DropdownConfig) return CreateDropdown(self._page, config) end
-function Tab:CreateMultiDropdown(config: MultiDropdownConfig) return CreateMultiDropdown(self._page, config) end
-function Tab:CreateLabel(config: LabelConfig) return CreateLabel(self._page, config) end
-function Tab:CreateInput(config: InputConfig) return CreateInput(self._page, config) end
-function Tab:CreateStringInput(config: StringInputConfig) return CreateStringInput(self._page, config) end
-function Tab:CreateColorPicker(config: ColorPickerConfig) return CreateColorPicker(self._page, config) end
-function Tab:CreateKeybind(config: KeybindConfig) return CreateKeybind(self._page, config) end
+function Tab:CreateSection(title: string, textColor: Color3?, columns: number?, rowHeight: number?) 
+	local parentObj = self._page
+	if self._columns then
+		parentObj = self._columns[self._nextColumn]
+		self._nextColumn = self._nextColumn + 1
+		if self._nextColumn > #self._columns then self._nextColumn = 1 end
+	end
+	return Section.new(self._ctx, parentObj, title, textColor, columns, rowHeight) 
+end
+
+function Tab:CreateButton(config: ButtonConfig) return CreateButton(self._ctx, self._page, config) end
+function Tab:CreateToggle(config: ToggleConfig) return CreateToggle(self._ctx, self._page, config) end
+function Tab:CreateSlider(config: SliderConfig) return CreateSlider(self._ctx, self._page, config) end
+function Tab:CreateDropdown(config: DropdownConfig) return CreateDropdown(self._ctx, self._page, config) end
+function Tab:CreateMultiDropdown(config: MultiDropdownConfig) return CreateMultiDropdown(self._ctx, self._page, config) end
+function Tab:CreateLabel(config: LabelConfig) return CreateLabel(self._ctx, self._page, config) end
+function Tab:CreateInput(config: InputConfig) return CreateInput(self._ctx, self._page, config) end
+function Tab:CreateStringInput(config: StringInputConfig) return CreateStringInput(self._ctx, self._page, config) end
+function Tab:CreateColorPicker(config: ColorPickerConfig) return CreateColorPicker(self._ctx, self._page, config) end
+function Tab:CreateKeybind(config: KeybindConfig) return CreateKeybind(self._ctx, self._page, config) end
+function Tab:CreatePriorityList(config: PriorityListConfig) return CreatePriorityList(self._ctx, self._page, config) end
 
 -- ---------- Window ----------
 
@@ -1812,10 +2164,13 @@ Window.__index = Window
 
 function Window.new(config: WindowConfig)
 	local self = setmetatable({}, Window)
+	local ctx = NewContext()
+	self._ctx = ctx
 
 	local screenGui = Create("ScreenGui", {
 		Name = "UILibrary",
 		ResetOnSpawn = false,
+		IgnoreGuiInset = true,
 		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 		Parent = TargetGui,
 	})
@@ -1927,12 +2282,12 @@ function Window.new(config: WindowConfig)
 	local closeButton = Create("TextButton", { Name = "Close", Size = UDim2.new(0, 24, 0, 24), BackgroundColor3 = Theme.Danger, BackgroundTransparency = 0.3, AutoButtonColor = false, Text = "", Parent = controls })
 	AddCorner(closeButton, UDim.new(1, 0)); Create("Frame", { Name = "IconA", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 0), Size = UDim2.new(0, 12, 0, 2), Rotation = 45, BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Parent = closeButton }); Create("Frame", { Name = "IconB", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 0), Size = UDim2.new(0, 12, 0, 2), Rotation = -45, BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Parent = closeButton })
 
-	TrackConnection(minimizeButton.MouseEnter:Connect(function() Tween(minimizeButton, { BackgroundTransparency = 0 }) end))
-	TrackConnection(minimizeButton.MouseLeave:Connect(function() Tween(minimizeButton, { BackgroundTransparency = 0.3 }) end))
-	TrackConnection(closeButton.MouseEnter:Connect(function() Tween(closeButton, { BackgroundTransparency = 0 }) end))
-	TrackConnection(closeButton.MouseLeave:Connect(function() Tween(closeButton, { BackgroundTransparency = 0.3 }) end))
+	TrackConnection(ctx, minimizeButton.MouseEnter:Connect(function() Tween(minimizeButton, { BackgroundTransparency = 0 }) end))
+	TrackConnection(ctx, minimizeButton.MouseLeave:Connect(function() Tween(minimizeButton, { BackgroundTransparency = 0.3 }) end))
+	TrackConnection(ctx, closeButton.MouseEnter:Connect(function() Tween(closeButton, { BackgroundTransparency = 0 }) end))
+	TrackConnection(ctx, closeButton.MouseLeave:Connect(function() Tween(closeButton, { BackgroundTransparency = 0.3 }) end))
 
-	MakeDraggable(topBar, main)
+	MakeDraggable(ctx, topBar, main)
 
 	local body = Create("Frame", { Name = "Body", Position = UDim2.new(0, 0, 0, 44), Size = UDim2.new(1, 0, 1, -44), BackgroundTransparency = 1, Parent = main })
 
@@ -2000,9 +2355,9 @@ function Window.new(config: WindowConfig)
 	self._onClose = config.OnClose :: (() -> ())?
 	self._toggleKey = config.ToggleKey :: Enum.KeyCode?
 
-	TrackConnection(searchBox:GetPropertyChangedSignal("Text"):Connect(function()
+	TrackConnection(ctx, searchBox:GetPropertyChangedSignal("Text"):Connect(function()
 		local query = searchBox.Text:lower()
-		for _, data in ipairs(SearchableRows) do
+		for _, data in ipairs(ctx.SearchableRows) do
 			if query == "" then
 				data.Row.Visible = true
 			else
@@ -2010,19 +2365,72 @@ function Window.new(config: WindowConfig)
 			end
 		end
 
-		for _, sec in ipairs(SectionsData) do
+		for _, sec in ipairs(ctx.SectionsData) do
 			if query == "" then
 				sec.Container.Visible = true
 			else
 				local hasVisible = false
-				for _, child in ipairs(sec.List:GetChildren()) do
-					if child:IsA("Frame") and child.Name == "Row" and child.Visible then
+				for _, data in ipairs(ctx.SearchableRows) do
+					if data.Row.Visible and data.Row:IsDescendantOf(sec.List) then
 						hasVisible = true
 						break
 					end
 				end
-				sec.Container.Visible = hasVisible
+				local titleMatch = string.find(sec.TitleLower, query, 1, true) ~= nil
+				sec.Container.Visible = hasVisible or titleMatch
 			end
+		end
+
+		for _, group in ipairs(ctx.ExpandableGroups) do
+			if query == "" then
+				group.Container.Visible = true
+				local expanded = group.GetExpanded()
+				group.Content.Visible = expanded
+				if group.Arrow then group.Arrow.Text = expanded and "-" or "+" end
+			else
+				local hasRowMatch = false
+				for _, data in ipairs(ctx.SearchableRows) do
+					if data.Row.Visible and data.Row:IsDescendantOf(group.Content) then
+						hasRowMatch = true
+						break
+					end
+				end
+				local titleMatch = string.find(group.TitleLower, query, 1, true) ~= nil
+
+				group.Container.Visible = hasRowMatch or titleMatch
+
+				local shouldExpand = hasRowMatch or group.GetExpanded()
+				group.Content.Visible = shouldExpand
+				if group.Arrow then group.Arrow.Text = shouldExpand and "-" or "+" end
+			end
+		end
+
+		local firstMatchTab = nil
+		local activeHasMatch = (query == "")
+		for _, tab in ipairs(self._tabs) do
+			local hasMatch = query == ""
+			if query ~= "" then
+				for _, data in ipairs(ctx.SearchableRows) do
+					if data.Row.Visible and data.Row:IsDescendantOf(tab._page) then
+						hasMatch = true
+						break
+					end
+				end
+			end
+
+			if tab._badge then
+				tab._badge.Visible = query ~= "" and hasMatch and tab._button ~= self._activeTabButton
+			end
+			if query ~= "" and hasMatch and not firstMatchTab then
+				firstMatchTab = tab
+			end
+			if tab._button == self._activeTabButton and hasMatch then
+				activeHasMatch = true
+			end
+		end
+
+		if query ~= "" and not activeHasMatch and firstMatchTab then
+			firstMatchTab._selectTab()
 		end
 	end))
 
@@ -2063,21 +2471,21 @@ function Window.new(config: WindowConfig)
 		end
 	end)
 
-	TrackConnection(minimizeButton.MouseButton1Click:Connect(function() self:Minimize() end))
-	TrackConnection(closeButton.MouseButton1Click:Connect(function() if self._onClose then task.spawn(self._onClose) end self:Destroy() end))
+	TrackConnection(ctx, minimizeButton.MouseButton1Click:Connect(function() self:Minimize() end))
+	TrackConnection(ctx, closeButton.MouseButton1Click:Connect(function() if self._onClose then task.spawn(self._onClose) end self:Destroy() end))
 
-	local resizing, resizeStart, startSize = false, Vector2.new(), UDim2.new()
-	TrackConnection(resizeHandle.InputBegan:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then resizing = true; resizeStart = input.Position; startSize = main.Size end end))
-	TrackConnection(UserInputService.InputChanged:Connect(function(input)
+	local resizing, resizeStart, startSize = false, Vector3.new(), UDim2.new()
+	TrackConnection(ctx, resizeHandle.InputBegan:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then resizing = true; resizeStart = input.Position; startSize = main.Size end end))
+	TrackConnection(ctx, UserInputService.InputChanged:Connect(function(input)
 		if resizing then
 			if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
 				main.Size = UDim2.new(0, math.clamp(startSize.X.Offset + (input.Position.X - resizeStart.X), self._minSize.X, self._maxSize.X), 0, math.clamp(startSize.Y.Offset + (input.Position.Y - resizeStart.Y), self._minSize.Y, self._maxSize.Y))
 			end
 		end
 	end))
-	TrackConnection(UserInputService.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then resizing = false end end))
+	TrackConnection(ctx, UserInputService.InputEnded:Connect(function(input) if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then resizing = false end end))
 
-	TrackConnection(UserInputService.InputBegan:Connect(function(input, gpe)
+	TrackConnection(ctx, UserInputService.InputBegan:Connect(function(input, gpe)
 		if gpe then return end
 		if self._toggleKey and input.KeyCode == self._toggleKey then
 			if self._minimized then self:Restore() else self:Minimize() end
@@ -2121,14 +2529,57 @@ function Window:CreateTab(config: TabConfig)
 	local stroke = AddStroke(button, Theme.Border, 1)
 	stroke.Transparency = 0
 
+	local searchBadge = Create("Frame", {
+		Name = "SearchBadge",
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -8, 0.5, 0),
+		Size = UDim2.new(0, 6, 0, 6),
+		BackgroundColor3 = Theme.Accent,
+		Visible = false,
+		ZIndex = 5,
+		Parent = button,
+	})
+	AddCorner(searchBadge, UDim.new(1, 0))
+	RegisterThemeRefresh(function() searchBadge.BackgroundColor3 = Theme.Accent end)
+
 	local page = Create("ScrollingFrame", { Name = "Page_" .. config.Name, Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 3, CanvasSize = UDim2.new(0, 0, 0, 0), AutomaticCanvasSize = Enum.AutomaticSize.Y, Visible = false, Parent = self._pages })
 	AddPadding(page, 12)
-	local pageColumns = math.max(1, math.floor(config.Columns or 1))
-	if pageColumns > 1 then Create("UIGridLayout", { SortOrder = Enum.SortOrder.LayoutOrder, CellPadding = UDim2.new(0, 10, 0, 10), CellSize = UDim2.new(1 / pageColumns, -10, 0, config.RowHeight or 44), FillDirection = Enum.FillDirection.Horizontal, HorizontalAlignment = Enum.HorizontalAlignment.Left, Parent = page })
-	else Create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 10), Parent = page }) end
 
-	local tab = Tab.new(page, button)
+	Create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 10), Parent = page })
+
+	local tab = Tab.new(self._ctx, page, button)
 	table.insert(self._tabs, tab)
+
+	local pageColumns = math.max(1, math.floor(config.Columns or 1))
+	if pageColumns > 1 then 
+		local columnsContainer = Create("Frame", { 
+			Name = "ColumnsContainer", 
+			Size = UDim2.new(1, -2, 0, 0), 
+			AutomaticSize = Enum.AutomaticSize.Y, 
+			BackgroundTransparency = 1, 
+			Parent = page 
+		})
+		Create("UIListLayout", { 
+			FillDirection = Enum.FillDirection.Horizontal, 
+			SortOrder = Enum.SortOrder.LayoutOrder, 
+			Padding = UDim.new(0, 10), 
+			Parent = columnsContainer 
+		})
+
+		tab._columns = {}
+		tab._nextColumn = 1
+		for i = 1, pageColumns do
+			local col = Create("Frame", { 
+				Name = "Column_" .. i, 
+				Size = UDim2.new(1 / pageColumns, -10 * (pageColumns - 1) / pageColumns, 0, 0), 
+				AutomaticSize = Enum.AutomaticSize.Y, 
+				BackgroundTransparency = 1, 
+				Parent = columnsContainer 
+			})
+			Create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 10), Parent = col })
+			table.insert(tab._columns, col)
+		end
+	end
 
 	local function selectTab()
 		for _, other in ipairs(self._tabs) do
@@ -2145,7 +2596,10 @@ function Window:CreateTab(config: TabConfig)
 		self._activeTabButton = button
 	end
 
-	TrackConnection(button.MouseButton1Click:Connect(selectTab))
+	tab._badge = searchBadge
+	tab._selectTab = selectTab
+
+	TrackConnection(self._ctx, button.MouseButton1Click:Connect(selectTab))
 	if not self._firstTab then self._firstTab = page; selectTab() end
 	return tab
 end
@@ -2172,6 +2626,8 @@ function Window:CreateThemeTab(config: TabConfig?)
 
 	local colorSection = mainSection:CreateExpandableGroup("Accent Colors", false)
 	colorSection:CreateColorPicker({ Title = "Secondary Color", Description = "Buttons, sliders, selected states", Default = Theme.Secondary, Flag = "Theme_Secondary", Callback = function(color) local h, s, v = color:ToHSV() UILibrary:SetTheme({ Secondary = color, Accent = Color3.fromHSV(h, s, math.clamp(v + 0.15, 0, 1)) }) end })
+	colorSection:CreateColorPicker({ Title = "Knob Color", Description = "Color of the slider and toggle circles", Default = Theme.KnobColor, Flag = "Theme_KnobColor", Callback = function(color) UILibrary:SetTheme({ KnobColor = color }) end })
+	colorSection:CreateColorPicker({ Title = "Button Text Color", Description = "Color of text inside clickable action buttons", Default = Theme.ButtonTextColor, Flag = "Theme_ButtonTextColor", Callback = function(color) UILibrary:SetTheme({ ButtonTextColor = color }) end })
 	colorSection:CreateColorPicker({ Title = "Text Color", Description = "Global color for normal titles and labels", Default = Theme.TextPrimary, Flag = "Theme_Text", Callback = function(color) UILibrary:SetTheme({ TextPrimary = color, TextSecondary = color, TextMuted = color }) end })
 	colorSection:CreateColorPicker({ Title = "Border Color", Description = "Color for inactive tabs and element outlines", Default = Theme.Border, Flag = "Theme_Border", Callback = function(color) UILibrary:SetTheme({ Border = color }) end })
 
@@ -2196,6 +2652,7 @@ function Window:CreateThemeTab(config: TabConfig?)
 end
 
 function Window:CreateIntegrationTab(config: TabConfig?)
+	local self_ = self
 	local tab = self:CreateTab(config or { Name = "Integrations" })
 
 	local mainSection = tab:CreateSection("External Services")
@@ -2213,7 +2670,7 @@ function Window:CreateIntegrationTab(config: TabConfig?)
 		Title = "Test Webhook",
 		Description = "Sends a test message to your Discord server.",
 		Callback = function()
-			local url = UILibrary.Settings["Theme_DiscordWebhook"]
+			local url = self_._ctx.Settings["Theme_DiscordWebhook"]
 
 			if not url or url == "" or not string.match(url, "discord%.com/api/webhooks") then
 				UILibrary:Notify({ Title = "Webhook Error", Content = "Please enter a valid Discord Webhook URL.", Duration = 3 })
@@ -2254,26 +2711,18 @@ end
 function Window:OnClose(callback: () -> ()) self._onClose = callback end
 
 function Window:Destroy() 
-	for _, conn in ipairs(ActiveConnections) do
+	local ctx = self._ctx
+
+	for _, conn in ipairs(ctx.ActiveConnections) do
 		if conn.Connected then
 			conn:Disconnect()
 		end
 	end
-	table.clear(ActiveConnections)
-	table.clear(Registry)
-	table.clear(SearchableRows)
-	table.clear(SectionsData)
-	table.clear(BoundKeys)
-
-	if Tooltip.Connection then
-		Tooltip.Connection:Disconnect()
-		Tooltip.Connection = nil
-	end
-
-	if NotificationScreenGui then
-		NotificationScreenGui:Destroy()
-		NotificationScreenGui = nil
-	end
+	table.clear(ctx.ActiveConnections)
+	table.clear(ctx.Registry)
+	table.clear(ctx.SearchableRows)
+	table.clear(ctx.SectionsData)
+	table.clear(ctx.BoundKeys)
 
 	self._screenGui:Destroy() 
 end
@@ -2302,11 +2751,11 @@ function Window:Minimize()
 	AddCorner(self._bubbleIconImage, UDim.new(1, 0))
 
 	local dragging = false
-	local dragStart = Vector2.new()
+	local dragStart = Vector3.new()
 	local startPos = UDim2.new()
 	local dragDistance = 0
 
-	TrackConnection(bubble.InputBegan:Connect(function(input)
+	TrackConnection(self._ctx, bubble.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			if dragging then return end
 			dragging = true
@@ -2316,7 +2765,7 @@ function Window:Minimize()
 		end
 	end))
 
-	TrackConnection(UserInputService.InputChanged:Connect(function(input)
+	TrackConnection(self._ctx, UserInputService.InputChanged:Connect(function(input)
 		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
 			local delta = input.Position - dragStart
 			dragDistance = delta.Magnitude
@@ -2329,7 +2778,7 @@ function Window:Minimize()
 		end
 	end))
 
-	TrackConnection(UserInputService.InputEnded:Connect(function(input)
+	TrackConnection(self._ctx, UserInputService.InputEnded:Connect(function(input)
 		if dragging and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
 			dragging = false
 			if dragDistance < 6 then
@@ -2351,18 +2800,21 @@ function Window:ToggleMinimize()
 	if self._minimized then self:Restore() else self:Minimize() end
 end
 
-function UILibrary:CreateWindow(config: WindowConfig?) return Window.new(config or {}) end
-
-function UILibrary:GetSettings(): { [string]: any }
+function Window:GetSettings(): { [string]: any }
 	local safeSettings = {}
-	for key, val in pairs(UILibrary.Settings) do
-		if typeof(val) == "Color3" then safeSettings[key] = { type = "Color3", r = val.R, g = val.G, b = val.B } else safeSettings[key] = val end
+	for key, val in pairs(self._ctx.Settings) do
+		if typeof(val) == "Color3" then
+			safeSettings[key] = { type = "Color3", r = val.R, g = val.G, b = val.B }
+		else
+			safeSettings[key] = val
+		end
 	end
 	return safeSettings
 end
 
-function UILibrary:LoadSettings(savedData: { [string]: any })
+function Window:LoadSettings(savedData: { [string]: any })
 	if type(savedData) ~= "table" then return end
+	local ctx = self._ctx
 
 	local function processFlag(flag, value)
 		local parsedValue = value
@@ -2370,8 +2822,8 @@ function UILibrary:LoadSettings(savedData: { [string]: any })
 			parsedValue = Color3.new(value.r, value.g, value.b) 
 		end
 
-		UILibrary.Settings[flag] = parsedValue
-		local componentApi = Registry[flag]
+		ctx.Settings[flag] = parsedValue
+		local componentApi = ctx.Registry[flag]
 
 		if componentApi and componentApi.SetValue then 
 			pcall(function() componentApi:SetValue(parsedValue) end) 
@@ -2396,6 +2848,8 @@ function UILibrary:LoadSettings(savedData: { [string]: any })
 		end
 	end
 end
+
+function UILibrary:CreateWindow(config: WindowConfig?) return Window.new(config or {}) end
 
 function UILibrary:SetTheme(overrides: { [string]: any })
 	for key, value in pairs(overrides) do local t = Theme :: any t[key] = value end
