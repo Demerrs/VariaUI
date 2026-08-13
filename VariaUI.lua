@@ -2629,18 +2629,22 @@ function Window:CreateTab(config: TabConfig)
 			other._page.Visible = false
 			Tween(other._button, { BackgroundColor3 = Theme.Background, TextColor3 = Theme.TextSecondary })
 			local otherStroke = other._button:FindFirstChildWhichIsA("UIStroke")
-			if otherStroke then Tween(otherStroke, { Color = Theme.Border, Transparency = 0 }) end
+			if otherStroke then 
+				Tween(otherStroke, { Color = Theme.Border, Transparency = 0 }) 
+				otherStroke.Thickness = 1
+			end
 			other._button.BackgroundTransparency = 0
 		end
+		
 		page.Visible = true
 		local targetTrans = Theme.UseGradient and 1 or 0
 		
-		button.BackgroundColor3 = Theme.Background
-		button.TextColor3 = Theme.TextPrimary
-		button.BackgroundTransparency = targetTrans
+		Tween(button, { BackgroundColor3 = Theme.Secondary, TextColor3 = Theme.ButtonTextColor, BackgroundTransparency = targetTrans })
+		
 		if stroke then
-			stroke.Color = Theme.Secondary
+			stroke.Color = Theme.Accent
 			stroke.Transparency = 0
+			stroke.Thickness = 2
 		end
 		
 		self._activeTabButton = button
