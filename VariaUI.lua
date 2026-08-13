@@ -2634,8 +2634,15 @@ function Window:CreateTab(config: TabConfig)
 		end
 		page.Visible = true
 		local targetTrans = Theme.UseGradient and 1 or 0
-		Tween(button, { BackgroundColor3 = Theme.Background, TextColor3 = Theme.TextPrimary, BackgroundTransparency = targetTrans })
-		Tween(stroke, { Color = Theme.Secondary, Transparency = 0 })
+		
+		button.BackgroundColor3 = Theme.Background
+		button.TextColor3 = Theme.TextPrimary
+		button.BackgroundTransparency = targetTrans
+		if stroke then
+			stroke.Color = Theme.Secondary
+			stroke.Transparency = 0
+		end
+		
 		self._activeTabButton = button
 	end
 
