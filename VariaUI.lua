@@ -2894,6 +2894,17 @@ function Window:LoadSettings(savedData: { [string]: any })
 	end
 
 	ctx.IsLoading = false
+
+	for _, tab in ipairs(self._tabs) do
+		local stroke = tab._button:FindFirstChildWhichIsA("UIStroke")
+		if stroke then
+			if tab._button == self._activeTabButton then
+				stroke.Color = Theme.Secondary
+			else
+				stroke.Color = Theme.Border
+			end
+		end
+	end
 end
 
 function Window:OnChange(callback: (settings: { [string]: any }) -> ())
