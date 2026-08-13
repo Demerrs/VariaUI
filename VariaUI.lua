@@ -2628,6 +2628,16 @@ function Window:CreateTab(config: TabConfig)
 		end
 	end
 
+	local function refreshTabTheme()
+		local isActive = self._activeTabButton == button
+		button.BackgroundColor3 = Theme.Background
+		button.BackgroundTransparency = isActive and (Theme.UseGradient and 1 or 0) or 0
+		button.TextColor3 = isActive and Theme.TextPrimary or Theme.TextSecondary
+		stroke.Color = isActive and Theme.Secondary or Theme.Border
+		stroke.Transparency = 0
+	end
+	RegisterThemeRefresh(refreshTabTheme)
+
 	local function selectTab()
 		for _, other in ipairs(self._tabs) do
 			other._page.Visible = false
