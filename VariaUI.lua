@@ -2501,15 +2501,23 @@ function Window.new(config: WindowConfig)
 		for _, tab in ipairs(self._tabs) do
 			local stroke = tab._button:FindFirstChildWhichIsA("UIStroke")
 			if tab._button == self._activeTabButton then
-				tab._button.BackgroundColor3 = Theme.Background
+				tab._button.BackgroundColor3 = Theme.Secondary
+				tab._button.TextColor3 = Theme.ButtonTextColor
 				tab._button.BackgroundTransparency = Theme.UseGradient and 1 or 0
-				tab._button.TextColor3 = Theme.TextPrimary
-				if stroke then stroke.Color = Theme.Secondary; stroke.Transparency = 0 end
+				if stroke then 
+					stroke.Color = Theme.Accent 
+					stroke.Transparency = 0
+					stroke.Thickness = 2
+				end
 			else
 				tab._button.BackgroundColor3 = Theme.Background
-				tab._button.BackgroundTransparency = 0
 				tab._button.TextColor3 = Theme.TextSecondary
-				if stroke then stroke.Color = Theme.Border; stroke.Transparency = 0 end
+				tab._button.BackgroundTransparency = 0
+				if stroke then 
+					stroke.Color = Theme.Border 
+					stroke.Transparency = 0
+					stroke.Thickness = 1
+				end
 			end
 		end
 	end)
@@ -2627,13 +2635,13 @@ function Window:CreateTab(config: TabConfig)
 	local function selectTab()
 		for _, other in ipairs(self._tabs) do
 			other._page.Visible = false
-			Tween(other._button, { BackgroundColor3 = Theme.Background, TextColor3 = Theme.TextSecondary })
+
+			Tween(other._button, { BackgroundColor3 = Theme.Background, TextColor3 = Theme.TextSecondary, BackgroundTransparency = 0 })
 			local otherStroke = other._button:FindFirstChildWhichIsA("UIStroke")
 			if otherStroke then 
 				Tween(otherStroke, { Color = Theme.Border, Transparency = 0 }) 
 				otherStroke.Thickness = 1
 			end
-			other._button.BackgroundTransparency = 0
 		end
 		
 		page.Visible = true
@@ -2644,7 +2652,7 @@ function Window:CreateTab(config: TabConfig)
 		if stroke then
 			stroke.Color = Theme.Accent
 			stroke.Transparency = 0
-			stroke.Thickness = 2
+			stroke.Thickness = 2 
 		end
 		
 		self._activeTabButton = button
