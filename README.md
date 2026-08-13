@@ -4,33 +4,36 @@
 
 ## 🌟 Introduction
 
-VariaUI is designed to be sleek, modular, and developer-friendly. Whether you are building a simple UI or a complex one, VariaUI provides beautifully animated components, built-in settings management, full theme customization, and dynamic multi-column layouts out of the box.
+VariaUI is designed to be sleek, modular, and developer-friendly. Whether you are building a simple UI or a complex one, VariaUI provides beautifully animated components, built-in settings management, full theme customization, and dynamic multi-column layouts out of the box. The built-in search bar also dynamically filters through all your tabs, sections, and expandable groups automatically.
 
 ---
 
 ## 🚀 1. Getting Started
 
-To begin using VariaUI, load the library via GitHub and initialize your main **Window**.
+To begin using VariaUI, load the library and initialize your main **Window**.
 
 > **💡 Pro Tip:** If you are using a custom theme, apply it using `UILibrary:SetTheme()` *before* creating your window to ensure all components load with your custom colors instantly!
 > 
 > 
+> **💡 Start Minimized:** If you want your UI to start as a small floating bubble instead of fully open, simply call `Window:Minimize()` at the very end of your script.
+> 
+> 
 
 ```lua
-local url = "https://raw.githubusercontent.com/Demerrs/VariaUI/refs/heads/main/VariaUI.lua"
-local UILibrary = loadstring(game:HttpGet(url))()
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local VariaUI = require(ReplicatedStorage:WaitForChild("VariaUI"))
 
 -- (Optional) Apply custom theme colors before building the UI
-UILibrary:SetTheme({
+VariaUI:SetTheme({
     Background = Color3.fromRGB(12, 12, 14),
     Secondary = Color3.fromRGB(255, 65, 65), -- Red Accent
     UseGradient = true
 })
 
 -- Initialize the Main Window
-local Window = UILibrary:CreateWindow({
+local Window = VariaUI:CreateWindow({
     Title = "VariaUI Hub",
-    SubTitle = "v1.0.0",
+    SubTitle = "v1.1.0",
     Size = UDim2.new(0, 560, 0, 380),    -- Optional: Default size
     MinSize = Vector2.new(380, 280),     -- Optional: Minimum drag size
     MaxSize = Vector2.new(1000, 720),    -- Optional: Maximum drag size
@@ -62,7 +65,7 @@ Once your `Window` is created, you can control its behavior and layout using the
 
 ### Built-in Feature Tabs
 
-VariaUI includes pre-built utility tabs so you don't have to code them from scratch! These built-in tabs seamlessly utilize the expandable group layouts.
+VariaUI includes pre-built utility tabs so you don't have to code them from scratch!
 
 | Method | Description |
 | --- | --- |
@@ -82,6 +85,8 @@ Window:CreateIntegrationTab({ Name = "Discord Integration" })
 ## 📁 3. Layout: Categories, Tabs, Sections & Expandables
 
 Keep your interface organized by nesting elements logically: **Category ➔ Tab ➔ Section ➔ Expandable Group (Optional) ➔ Component**.
+
+⚠️ **Crucial Rule for Expandable Groups:** Expandable Groups *must* be created under a `Section`. You cannot attach an Expandable Group directly to a `Tab`.
 
 ```lua
 -- 1. Create a non-clickable text label in the sidebar to group tabs
@@ -104,8 +109,6 @@ local AdvancedGroup = GeneralSection:CreateExpandableGroup("Advanced Options", f
 ### 🔲 Multi-Column (Grid) Layouts
 
 Tabs, Sections, and Expandable Groups all feature native support for multi-column grids! Simply pass the `columns` and `rowHeight` parameters when creating them.
-
-Note: When using grids for standard elements (like toggles/buttons), use a `rowHeight` of ~`42`. Elements with descriptions require a `rowHeight` of `52`.
 
 ```lua
 -- Create a Section with 2 columns
@@ -143,13 +146,11 @@ local MyButton = GeneralSection:CreateButton({
     end,
 })
 
-MyButton:SetTitle("Submit Now!") -- Update title dynamically
-
 ```
 
 ### 🎚️ Toggle
 
-An on/off switch component. Toggles visually sync with your custom theme colors and border settings natively.
+An on/off switch component. Toggles visually sync with your custom theme colors.
 
 ```lua
 local MyToggle = GeneralSection:CreateToggle({
@@ -180,7 +181,7 @@ MyToggle:AddKeybind({
 A draggable slider for numerical values.
 
 ```lua
-local MySlider = GeneralSection:CreateSlider({
+GeneralSection:CreateSlider({
     Title = "WalkSpeed",
     Description = "Adjusts your character's speed.",
     Min = 16,
@@ -197,13 +198,12 @@ local MySlider = GeneralSection:CreateSlider({
 
 ### 📋 Dropdowns (Single & Multi)
 
-Searchable dropdown menus for selecting from a list of options. These gracefully pop out over other elements using the built-in overlay system.
+Searchable dropdown menus for selecting from a list of options.
 
 ```lua
 -- Single Selection
 GeneralSection:CreateDropdown({
     Title = "Graphics Quality",
-    Description = "Set the rendering quality.",
     Options = {"Low", "Medium", "High"},
     Default = "Medium",
     Flag = "Graphics_Dropdown",
@@ -221,6 +221,23 @@ GeneralSection:CreateMultiDropdown({
     Callback = function(selectedList)
         print("Rendering:", table.concat(selectedList, ", "))
     end,
+})
+
+```
+
+### 🗂️ Priority List
+
+A fully interactive list that allows users to drag and drop items to reorder them. Perfect for target prioritization systems.
+
+```lua
+GeneralSection:CreatePriorityList({
+    Title = "Kill Aura Priority",
+    Description = "Rank who gets attacked first.",
+    Items = {"Medics", "Snipers", "Tanks", "Grunts"},
+    Flag = "Utility_TargetPriority",
+    Callback = function(items)
+        print("Priority updated!")
+    end
 })
 
 ```
@@ -262,13 +279,12 @@ GeneralSection:CreateColorPicker({
     Default = Color3.fromRGB(51, 144, 236),
     Flag = "Accent_Color",
     Callback = function(color)
-        UILibrary:SetTheme({ Secondary = color })
+        VariaUI:SetTheme({ Secondary = color })
     end,
 })
 
 GeneralSection:CreateKeybind({
     Title = "Hide Interface",
-    Description = "Quickly hides the menu.",
     Default = Enum.KeyCode.End,
     Flag = "Hide_Key",
     Callback = function(key)
@@ -308,21 +324,21 @@ end
 
 ## ⚙️ 6. Library Utilities & Config Saving
 
-These functions are called directly on `UILibrary` and handle configuration saving, notification dispatching, and theming.
+These functions are called directly on the library and handle configuration saving, notification dispatching, and theming.
 
 ### Configuration Saving & Loading
 
-VariaUI uses unique `Flag` strings to manage states. It automatically formats `Color3` values and keybinds safely for JSON encoding, regardless of whether a component is in a Section or hidden inside a collapsed Expandable Group.
+VariaUI uses unique `Flag` strings to manage states. It automatically formats `Color3` values and keybinds safely for JSON encoding.
 
 ```lua
 -- SAVING: Get all current UI values by their Flags
-local currentConfig = UILibrary:GetSettings()
+local currentConfig = Window:GetSettings()
 local jsonString = game:GetService("HttpService"):JSONEncode(currentConfig)
-writefile("MyConfig.json", jsonString) -- your custom function to write setting
+writefile("MyConfig.json", jsonString) 
 
 -- LOADING: Apply a saved table back to the UI
 local savedTable = game:GetService("HttpService"):JSONDecode(readfile("MyHubConfig.json"))
-UILibrary:LoadSettings(savedTable)
+Window:LoadSettings(savedTable)
 
 ```
 
@@ -331,7 +347,7 @@ UILibrary:LoadSettings(savedTable)
 Trigger a clean, animated on-screen toast notification.
 
 ```lua
-UILibrary:Notify({
+VariaUI:Notify({
     Title = "Success!",
     Content = "Your configuration has been saved successfully.",
     Duration = 3.5 -- Display duration in seconds
@@ -341,10 +357,10 @@ UILibrary:Notify({
 
 ### Dynamic Theming
 
-Update the global theme colors dynamically. VariaUI automatically re-renders all existing components (including toggles, strokes, text, and nested groups) to flawlessly match the new theme.
+Update the global theme colors dynamically. VariaUI automatically re-renders all existing components to flawlessly match the new theme.
 
 ```lua
-UILibrary:SetTheme({
+VariaUI:SetTheme({
     Background = Color3.fromRGB(15, 15, 20),
     Elevated = Color3.fromRGB(22, 22, 28),
     Secondary = Color3.fromRGB(0, 255, 127), -- Neon Green
