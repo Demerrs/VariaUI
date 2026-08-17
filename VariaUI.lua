@@ -596,9 +596,9 @@ local function MakeRowResponsive(ctx: any, row: Frame, titleLabel: TextLabel, de
 		local avail = row.AbsoluteSize.X
 		if avail <= 0 then return end
 
-		local needed = baseOffset + MIN_STACK_TITLE_WIDTH + ROW_PADDING_X
+		local actualTextWidth = titleLabel.TextBounds.X
+		local needed = baseOffset + actualTextWidth + ROW_PADDING_X
 		local shouldStack = avail < needed
-		if shouldStack == isStacked then return end
 		isStacked = shouldStack
 
 		if isStacked then
@@ -612,8 +612,8 @@ local function MakeRowResponsive(ctx: any, row: Frame, titleLabel: TextLabel, de
 			end
 
 			for _, c in ipairs(controls) do
-				c.Inst.AnchorPoint = Vector2.new(c.WideAnchor.X, 0)
-				c.Inst.Position = UDim2.new(c.WidePosition.X.Scale, c.WidePosition.X.Offset, 0, controlLineY)
+				c.Inst.AnchorPoint = Vector2.new(0, 0)
+				c.Inst.Position = UDim2.new(0, 0, 0, controlLineY)
 			end
 
 			row.Size = UDim2.new(wideRowSize.X.Scale, wideRowSize.X.Offset, 0, stackedHeight)
@@ -652,13 +652,37 @@ local function MakeGridResponsive(ctx: any, container: Frame, gridLayout: UIGrid
 
 		local fitColumns = math.max(1, math.floor((avail + 6) / (minWidth + 6)))
 		local newColumns = math.clamp(fitColumns, 1, maxColumns)
-		if newColumns == currentColumns then return end
-		currentColumns = newColumns
 
-		gridLayout.CellSize = UDim2.new(1 / currentColumns, -6, 0, cellHeight)
+		local maxH = cellHeight
+		for _, child in ipairs(container:GetChildren()) do
+			if child:IsA("GuiObject") and child ~= gridLayout then
+				if child.Size.Y.Offset > maxH then
+					maxH = child.Size.Y.Offset
+				end
+			end
+		end
+
+		if newColumns ~= currentColumns or gridLayout.CellSize.Y.Offset ~= maxH then
+			currentColumns = newColumns
+			gridLayout.CellSize = UDim2.new(1 / currentColumns, -6, 0, maxH)
+		end
 	end
 
 	TrackConnection(ctx, container:GetPropertyChangedSignal("AbsoluteSize"):Connect(apply))
+
+	TrackConnection(ctx, container.ChildAdded:Connect(function(child)
+		if child:IsA("GuiObject") then
+			TrackConnection(ctx, child:GetPropertyChangedSignal("Size"):Connect(apply))
+			apply()
+		end
+	end))
+
+	for _, child in ipairs(container:GetChildren()) do
+		if child:IsA("GuiObject") and child ~= gridLayout then
+			TrackConnection(ctx, child:GetPropertyChangedSignal("Size"):Connect(apply))
+		end
+	end
+
 	apply()
 end
 
