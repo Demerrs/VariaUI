@@ -556,6 +556,142 @@ function UILibrary:Notify(config: NotificationConfig)
 	end)
 end
 
+-- ---------- Responsive layout helpers ----------
+
+local MIN_STACK_TITLE_WIDTH = 90
+local ROW_PADDING_X = 28
+local STACK_GAP = 6
+
+local function MakeRowResponsive(ctx: any, row: Frame, titleLabel: TextLabel, descLabel: TextLabel?, baseOffset: number, controlHeight: number?)
+	local cHeight = controlHeight or 26
+	local hasDesc = descLabel ~= nil
+
+	local controls = {}
+	for _, child in ipairs(row:GetChildren()) do
+		if child:IsA("GuiObject") and child.AnchorPoint.X >= 1 and child.AnchorPoint.Y == 0.5 then
+			table.insert(controls, {
+				Inst = child,
+				WideAnchor = child.AnchorPoint,
+				WidePosition = child.Position,
+			})
+		end
+	end
+	if #controls == 0 then return end
+
+	local wideTitlePos, wideTitleSize, wideTitleAlign = titleLabel.Position, titleLabel.Size, titleLabel.TextYAlignment
+	local wideDescPos, wideDescSize
+	if descLabel then
+		wideDescPos = descLabel.Position
+		wideDescSize = descLabel.Size
+	end
+	local wideRowSize = row.Size
+
+	local textBlockHeight = hasDesc and 32 or 18
+	local controlLineY = textBlockHeight + STACK_GAP
+	local stackedHeight = controlLineY + cHeight + ROW_PADDING_X
+
+	local isStacked = false
+
+	local function applyLayout()
+		local avail = row.AbsoluteSize.X
+		if avail <= 0 then return end
+
+		local needed = baseOffset + MIN_STACK_TITLE_WIDTH + ROW_PADDING_X
+		local shouldStack = avail < needed
+		if shouldStack == isStacked then return end
+		isStacked = shouldStack
+
+		if isStacked then
+			titleLabel.Position = UDim2.new(0, 0, 0, 0)
+			titleLabel.Size = UDim2.new(1, 0, 0, 16)
+			titleLabel.TextYAlignment = Enum.TextYAlignment.Top
+
+			if descLabel then
+				descLabel.Position = UDim2.new(0, 0, 0, 18)
+				descLabel.Size = UDim2.new(1, 0, 0, 14)
+			end
+
+			for _, c in ipairs(controls) do
+				c.Inst.AnchorPoint = Vector2.new(c.WideAnchor.X, 0)
+				c.Inst.Position = UDim2.new(c.WidePosition.X.Scale, c.WidePosition.X.Offset, 0, controlLineY)
+			end
+
+			row.Size = UDim2.new(wideRowSize.X.Scale, wideRowSize.X.Offset, 0, stackedHeight)
+		else
+			titleLabel.Position = wideTitlePos
+			titleLabel.Size = wideTitleSize
+			titleLabel.TextYAlignment = wideTitleAlign
+
+			if descLabel and wideDescPos and wideDescSize then
+				descLabel.Position = wideDescPos
+				descLabel.Size = wideDescSize
+			end
+
+			for _, c in ipairs(controls) do
+				c.Inst.AnchorPoint = c.WideAnchor
+				c.Inst.Position = c.WidePosition
+			end
+
+			row.Size = wideRowSize
+		end
+	end
+
+	TrackConnection(ctx, row:GetPropertyChangedSignal("AbsoluteSize"):Connect(applyLayout))
+	applyLayout()
+end
+
+local MIN_GRID_COLUMN_WIDTH = 190
+
+local function MakeGridResponsive(ctx: any, container: Frame, gridLayout: UIGridLayout, maxColumns: number, cellHeight: number, minColumnWidth: number?)
+	local minWidth = minColumnWidth or MIN_GRID_COLUMN_WIDTH
+	local currentColumns = maxColumns
+
+	local function apply()
+		local avail = container.AbsoluteSize.X
+		if avail <= 0 then return end
+
+		local fitColumns = math.max(1, math.floor((avail + 6) / (minWidth + 6)))
+		local newColumns = math.clamp(fitColumns, 1, maxColumns)
+		if newColumns == currentColumns then return end
+		currentColumns = newColumns
+
+		gridLayout.CellSize = UDim2.new(1 / currentColumns, -6, 0, cellHeight)
+	end
+
+	TrackConnection(ctx, container:GetPropertyChangedSignal("AbsoluteSize"):Connect(apply))
+	apply()
+end
+
+local MIN_PAGE_COLUMN_WIDTH = 220
+
+local function MakePageColumnsResponsive(ctx: any, columnsContainer: Frame, listLayout: UIListLayout, columns: { Frame }, columnCount: number)
+	local isStacked = false
+
+	local function apply()
+		local avail = columnsContainer.AbsoluteSize.X
+		if avail <= 0 then return end
+
+		local shouldStack = avail < (MIN_PAGE_COLUMN_WIDTH * columnCount + 10 * (columnCount - 1))
+		if shouldStack == isStacked then return end
+		isStacked = shouldStack
+
+		if isStacked then
+			listLayout.FillDirection = Enum.FillDirection.Vertical
+			for _, col in ipairs(columns) do
+				col.Size = UDim2.new(1, 0, 0, 0)
+			end
+		else
+			listLayout.FillDirection = Enum.FillDirection.Horizontal
+			for _, col in ipairs(columns) do
+				col.Size = UDim2.new(1 / columnCount, -10 * (columnCount - 1) / columnCount, 0, 0)
+			end
+		end
+	end
+
+	TrackConnection(ctx, columnsContainer:GetPropertyChangedSignal("AbsoluteSize"):Connect(apply))
+	apply()
+end
+
 -- ---------- Component builders ----------
 
 local function BuildRow(ctx: any, parent: Instance, title: string, description: string?, textColor: Color3?, rightOffset: number?)
@@ -659,7 +795,11 @@ local function BuildRow(ctx: any, parent: Instance, title: string, description: 
 			local totalOffset = baseOffset + inlineOffset
 			titleLabel.Size = UDim2.new(1, -totalOffset, description and 0 or 1, description and 16 or 0)
 			if descLabel then descLabel.Size = UDim2.new(1, -totalOffset, 0, 14) end
-		end
+		end,
+
+		Finalize = function(controlHeight: number?)
+			MakeRowResponsive(ctx, row, titleLabel, descLabel, baseOffset, controlHeight)
+		end,
 	}
 end
 
@@ -786,6 +926,8 @@ local function ConstructKeybind(ctx: any, parent: Instance, config: KeybindConfi
 		ctx.Registry[config.Flag] = api
 	end
 
+	if rowObj then rowObj.Finalize(26) end
+
 	return api
 end
 
@@ -840,6 +982,8 @@ local function CreateButton(ctx: any, parent: Instance, config: ButtonConfig)
 		CreateColorPicker(ctx, rowObj.InlineContainer, subConfig, true)
 		return api
 	end
+
+	rowObj.Finalize(26)
 
 	return api
 end
@@ -930,6 +1074,8 @@ local function CreateToggle(ctx: any, parent: Instance, config: ToggleConfig)
 		render()
 		if config.Callback then task.spawn(config.Callback, state) end
 	end))
+
+	rowObj.Finalize(22)
 
 	return api
 end
@@ -1243,7 +1389,7 @@ local function CreateDropdown(ctx: any, parent: Instance, config: DropdownConfig
 
 	local expandColumns = math.max(1, math.floor(config.ExpandColumns or 1))
 	if expandColumns > 1 then
-		Create("UIGridLayout", {
+		local expandGridLayout = Create("UIGridLayout", {
 			SortOrder = Enum.SortOrder.LayoutOrder,
 			CellPadding = UDim2.new(0, 6, 0, 6),
 			CellSize = UDim2.new(1 / expandColumns, -6, 0, 30),
@@ -1251,6 +1397,7 @@ local function CreateDropdown(ctx: any, parent: Instance, config: DropdownConfig
 			HorizontalAlignment = Enum.HorizontalAlignment.Left,
 			Parent = expandScroller,
 		})
+		MakeGridResponsive(ctx, expandScroller, expandGridLayout, expandColumns, 30, 100)
 	else
 		Create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 2), Parent = expandScroller })
 	end
@@ -1429,6 +1576,7 @@ local function CreateDropdown(ctx: any, parent: Instance, config: DropdownConfig
 	end
 
 	if config.Flag then ctx.Registry[config.Flag] = api end
+	rowObj.Finalize(26)
 	return api
 end
 
@@ -1505,6 +1653,7 @@ local function CreateInput(ctx: any, parent: Instance, config: InputConfig)
 	end
 
 	if config.Flag then ctx.Registry[config.Flag] = api end
+	rowObj.Finalize(26)
 	return api
 end
 
@@ -1624,6 +1773,7 @@ local function CreateStringInput(ctx: any, parent: Instance, config: StringInput
 		return api
 	end
 	if config.Flag then ctx.Registry[config.Flag] = api end
+	rowObj.Finalize(26)
 	return api
 end
 
@@ -1723,6 +1873,7 @@ CreateColorPicker = function(ctx: any, parent: Instance, config: ColorPickerConf
 	function api.GetValue(_self) return currentColor end
 
 	if config.Flag then ctx.Registry[config.Flag] = api end
+	if rowObj then rowObj.Finalize(26) end
 	return api
 end
 
@@ -1984,6 +2135,7 @@ local function CreatePriorityList(ctx: any, parent: Instance, config: PriorityLi
 	function api.GetValue(_self) return items end
 
 	if config.Flag then ctx.Registry[config.Flag] = api end
+	rowObj.Finalize(26)
 	return api
 end
 
@@ -2027,7 +2179,7 @@ function Section.new(ctx: any, parent: Instance, title: string, textColor: Color
 
 	local numColumns = math.max(1, math.floor(columns or 1))
 	if numColumns > 1 then
-		Create("UIGridLayout", {
+		local gridLayout = Create("UIGridLayout", {
 			SortOrder = Enum.SortOrder.LayoutOrder,
 			CellPadding = UDim2.new(0, 6, 0, 6),
 			CellSize = UDim2.new(1 / numColumns, -6, 0, rowHeight or 44),
@@ -2035,6 +2187,7 @@ function Section.new(ctx: any, parent: Instance, title: string, textColor: Color
 			HorizontalAlignment = Enum.HorizontalAlignment.Left,
 			Parent = list,
 		})
+		MakeGridResponsive(ctx, list, gridLayout, numColumns, rowHeight or 44)
 	else
 		Create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 6), Parent = list })
 	end
@@ -2111,7 +2264,7 @@ function Section:CreateExpandableGroup(title: string, defaultExpanded: boolean?,
 
 	local numColumns = math.max(1, math.floor(columns or 1))
 	if numColumns > 1 then
-		Create("UIGridLayout", {
+		local gridLayout = Create("UIGridLayout", {
 			SortOrder = Enum.SortOrder.LayoutOrder,
 			CellPadding = UDim2.new(0, 6, 0, 6),
 			CellSize = UDim2.new(1 / numColumns, -6, 0, rowHeight or 42),
@@ -2119,6 +2272,7 @@ function Section:CreateExpandableGroup(title: string, defaultExpanded: boolean?,
 			HorizontalAlignment = Enum.HorizontalAlignment.Left,
 			Parent = contentLayout,
 		})
+		MakeGridResponsive(ctx, contentLayout, gridLayout, numColumns, rowHeight or 42)
 	else
 		Create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 6), Parent = contentLayout })
 	end
@@ -2606,7 +2760,7 @@ function Window:CreateTab(config: TabConfig)
 			BackgroundTransparency = 1, 
 			Parent = page 
 		})
-		Create("UIListLayout", { 
+		local columnsListLayout = Create("UIListLayout", { 
 			FillDirection = Enum.FillDirection.Horizontal, 
 			SortOrder = Enum.SortOrder.LayoutOrder, 
 			Padding = UDim.new(0, 10), 
@@ -2626,6 +2780,8 @@ function Window:CreateTab(config: TabConfig)
 			Create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 10), Parent = col })
 			table.insert(tab._columns, col)
 		end
+
+		MakePageColumnsResponsive(self._ctx, columnsContainer, columnsListLayout, tab._columns, pageColumns)
 	end
 
 	local function refreshTabTheme()
