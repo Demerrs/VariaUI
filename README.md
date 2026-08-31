@@ -21,7 +21,7 @@ To begin using VariaUI, load the library and initialize your main **Window**.
 
 ```lua
 local url = "https://raw.githubusercontent.com/Demerrs/VariaUI/refs/heads/main/VariaUI.lua"
-local UILibrary = loadstring(game:HttpGet(url))()
+local VariaUI = loadstring(game:HttpGet(url))()
 
 -- (Optional) Apply custom theme colors before building the UI
 VariaUI:SetTheme({
