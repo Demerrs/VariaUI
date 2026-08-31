@@ -20,8 +20,8 @@ To begin using VariaUI, load the library and initialize your main **Window**.
 > 
 
 ```lua
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local VariaUI = require(ReplicatedStorage:WaitForChild("VariaUI"))
+local url = "https://raw.githubusercontent.com/Demerrs/VariaUI/refs/heads/main/VariaUI.lua"
+local UILibrary = loadstring(game:HttpGet(url))()
 
 -- (Optional) Apply custom theme colors before building the UI
 VariaUI:SetTheme({
